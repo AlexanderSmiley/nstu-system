@@ -1,14 +1,21 @@
 import { vi } from 'vitest'
+import { DEFAULT_PREFERENCES, mergePreferences, normalizePreferences } from '../api/preferences'
 import type {
+  CalendarEntry,
   CreatedUser,
   Event,
   EventDetail,
   Me,
+  Note,
+  NoteAttachmentInfo,
+  NotesResponse,
+  Preferences,
   Profile,
   QueueEntry,
   QueueResponse,
   SiteInfo,
   StudentProfile,
+  UpdatePreferencesInput,
   User,
 } from '../api/types'
 
@@ -20,6 +27,19 @@ export interface MockRequest {
 }
 
 export type MockHandler = (request: MockRequest) => Response | undefined
+
+/** Stateful configuration of the site icon endpoints used by the icon tests. */
+export interface SiteIconMockOptions {
+  /** Whether an icon exists; a function makes it dynamic across upload/reset. */
+  exists?: boolean | (() => boolean)
+  contentType?: string
+  sizeBytes?: number
+  etag?: string
+  /** `PUT /api/admin/site/icon` — receives the multipart `FormData`. */
+  onUpload?: (formData: FormData | undefined) => Response
+  /** `DELETE /api/admin/site/icon` — defaults to an idempotent `204`. */
+  onReset?: () => Response
+}
 
 export function jsonResponse(
   status: number,
@@ -35,6 +55,8 @@ export function jsonResponse(
 export interface ApiMockOptions {
   me?: Me | null | (() => Me | null)
   site?: SiteInfo
+  /** Site icon state for `GET /api/site/icon` and the admin upload/reset. */
+  siteIcon?: SiteIconMockOptions
   events?: Event[]
   /** `GET /api/events/history` — the server already filters by role. */
   eventHistory?: Event[]
@@ -50,6 +72,14 @@ export interface ApiMockOptions {
   queue?: QueueResponse | ((eventId: string, request: MockRequest) => Response)
   users?: User[]
   studentProfile?: StudentProfile
+  /**
+   * Initial per-account preferences for `GET /api/students/me/preferences`
+   * (defaults when omitted). The mock keeps them in memory, so a successful
+   * `PATCH` is visible on the next `GET` (the settings tests rely on that).
+   */
+  preferences?: Preferences
+  /** `PATCH /api/students/me/preferences` — defaults to a stateful merge. */
+  updatePreferences?: (body: unknown) => Response
   login?: (body: { username?: string; password?: string }) => Response
   /** `POST /api/auth/refresh` — defaults to a successful rotation. */
   refresh?: () => Response
@@ -62,6 +92,29 @@ export interface ApiMockOptions {
   createEvent?: (body: unknown) => Response
   /** `PATCH /api/events/{id}` — defaults to `200` with an event built from the body. */
   updateEvent?: (id: string, body: unknown) => Response
+  /** `GET /api/calendar?from=&to=` — the server already filters by role/audience. */
+  calendar?: CalendarEntry[] | ((from: string, to: string) => Response)
+  /** `POST /api/calendar` — defaults to `201` with an entry built from the body. */
+  createCalendarEntry?: (body: unknown) => Response
+  /** `PATCH /api/calendar/{id}` — defaults to `200` with an entry built from the body. */
+  updateCalendarEntry?: (id: string, body: unknown) => Response
+  /** `DELETE /api/calendar/{id}` — defaults to `204`. */
+  deleteCalendarEntry?: (id: string) => Response
+  /**
+   * `GET /api/notes` — a function makes the response dynamic across
+   * create/update/upload, which the notes tests rely on.
+   */
+  notes?: NotesResponse | (() => NotesResponse)
+  /** `POST /api/notes` — defaults to `201` with a note built from the body. */
+  createNote?: (body: unknown) => Response
+  /** `PATCH /api/notes/{id}` — defaults to `200` with a note built from the body. */
+  updateNote?: (id: string, body: unknown) => Response
+  /** `DELETE /api/notes/{id}` — defaults to `204`. */
+  deleteNote?: (id: string) => Response
+  /** `POST /api/notes/{id}/attachments` — receives the multipart `FormData`. */
+  uploadNoteAttachment?: (noteId: string, formData: FormData | undefined) => Response
+  /** `DELETE /api/notes/{id}/attachments/{attachmentId}` — defaults to `204`. */
+  deleteNoteAttachment?: (noteId: string, attachmentId: string) => Response
   /** Custom handler, checked before every built-in; return `undefined` to fall through. */
   handler?: MockHandler
 }
@@ -113,6 +166,47 @@ export function makeMockEvent(overrides: Partial<Event> = {}): Event {
   }
 }
 
+/** Minimal calendar entry payload used by the create default and the tests. */
+export function makeMockCalendarEntry(overrides: Partial<CalendarEntry> = {}): CalendarEntry {
+  return {
+    id: 'calendar-entry',
+    title: 'Мероприятие',
+    description: null,
+    startsOn: '2026-10-07',
+    startsAt: null,
+    audience: 'ME',
+    authorAccountId: 'author',
+    authorDisplayName: null,
+    mine: true,
+    ...overrides,
+  }
+}
+
+/** Minimal note payload used by the create/update defaults and the tests. */
+export function makeMockNote(overrides: Partial<Note> = {}): Note {
+  return {
+    id: 'note-1',
+    title: 'Заметка',
+    body: null,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+    attachments: [],
+    ...overrides,
+  }
+}
+
+/** Minimal attachment payload used by the upload default and the tests. */
+export function makeMockNoteAttachment(overrides: Partial<NoteAttachmentInfo> = {}): NoteAttachmentInfo {
+  return {
+    id: 'attachment-1',
+    fileName: 'file.txt',
+    contentType: 'text/plain',
+    sizeBytes: 5,
+    createdAt: new Date(0).toISOString(),
+    ...overrides,
+  }
+}
+
 function makeEntry(name: string): QueueEntry {
   return {
     id: `entry-${name}`,
@@ -140,10 +234,32 @@ export function installApiMock(options: ApiMockOptions = {}): void {
     return options.me ?? null
   }
 
+  // Stateful preferences so an optimistic PATCH is confirmed by the next GET.
+  let preferencesState: Preferences = normalizePreferences(options.preferences ?? DEFAULT_PREFERENCES)
+
   const handlers: MockHandler[] = [
     (request) => {
       if (request.method === 'GET' && request.url === '/api/site') {
         return jsonResponse(200, options.site ?? { name: 'NSTU System' })
+      }
+      return undefined
+    },
+    (request) => {
+      if ((request.method === 'GET' || request.method === 'HEAD') && request.url === '/api/site/icon') {
+        const icon = options.siteIcon
+        const exists =
+          typeof icon?.exists === 'function' ? icon.exists() : icon?.exists ?? false
+        if (!exists) {
+          return new Response(null, { status: 404 })
+        }
+        const headers: Record<string, string> = {
+          'Content-Type': icon?.contentType ?? 'image/png',
+          ETag: icon?.etag ?? '"test-icon"',
+        }
+        if (icon?.sizeBytes !== undefined) {
+          headers['Content-Length'] = String(icon.sizeBytes)
+        }
+        return new Response(null, { status: 200, headers })
       }
       return undefined
     },
@@ -188,6 +304,131 @@ export function installApiMock(options: ApiMockOptions = {}): void {
           return options.password(request.body as { oldPassword?: string; newPassword?: string })
         }
         return jsonResponse(200, DEFAULT_PROFILE)
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'GET' && request.url.startsWith('/api/calendar')) {
+        const url = new URL(request.url, 'http://localhost')
+        if (url.pathname !== '/api/calendar') {
+          return undefined
+        }
+        const from = url.searchParams.get('from') ?? ''
+        const to = url.searchParams.get('to') ?? ''
+        if (typeof options.calendar === 'function') {
+          return options.calendar(from, to)
+        }
+        return jsonResponse(200, options.calendar ?? [])
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'POST' && request.url === '/api/calendar') {
+        if (options.createCalendarEntry) {
+          return options.createCalendarEntry(request.body)
+        }
+        const body = (request.body ?? {}) as Partial<CalendarEntry>
+        return jsonResponse(201, makeMockCalendarEntry(body))
+      }
+      return undefined
+    },
+    (request) => {
+      const match = /^\/api\/calendar\/([^/]+)$/.exec(request.url)
+      if (!match) {
+        return undefined
+      }
+      const id = decodeURIComponent(match[1])
+      if (request.method === 'PATCH') {
+        if (options.updateCalendarEntry) {
+          return options.updateCalendarEntry(id, request.body)
+        }
+        const body = (request.body ?? {}) as Partial<CalendarEntry>
+        return jsonResponse(200, makeMockCalendarEntry({ ...body, id }))
+      }
+      if (request.method === 'DELETE') {
+        if (options.deleteCalendarEntry) {
+          return options.deleteCalendarEntry(id)
+        }
+        return jsonResponse(204, undefined)
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'GET' && request.url === '/api/notes') {
+        const notes = typeof options.notes === 'function' ? options.notes() : options.notes
+        return jsonResponse(
+          200,
+          notes ?? { notes: [], quota: { usedBytes: 0, limitBytes: 104857600 } },
+        )
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'POST' && request.url === '/api/notes') {
+        if (options.createNote) {
+          return options.createNote(request.body)
+        }
+        const body = (request.body ?? {}) as { title?: string; body?: string | null }
+        return jsonResponse(
+          201,
+          makeMockNote({ id: 'created-note', title: (body.title ?? '').trim(), body: body.body ?? null }),
+        )
+      }
+      return undefined
+    },
+    (request) => {
+      const match = /^\/api\/notes\/([^/]+)\/attachments$/.exec(request.url)
+      if (match && request.method === 'POST') {
+        const noteId = decodeURIComponent(match[1])
+        if (options.uploadNoteAttachment) {
+          return options.uploadNoteAttachment(noteId, request.body as FormData | undefined)
+        }
+        return jsonResponse(201, makeMockNoteAttachment())
+      }
+      return undefined
+    },
+    (request) => {
+      const match = /^\/api\/notes\/([^/]+)\/attachments\/([^/]+)$/.exec(request.url)
+      if (!match) {
+        return undefined
+      }
+      const noteId = decodeURIComponent(match[1])
+      const attachmentId = decodeURIComponent(match[2])
+      if (request.method === 'DELETE') {
+        if (options.deleteNoteAttachment) {
+          return options.deleteNoteAttachment(noteId, attachmentId)
+        }
+        return jsonResponse(204, undefined)
+      }
+      if (request.method === 'GET') {
+        return new Response('attachment', {
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        })
+      }
+      return undefined
+    },
+    (request) => {
+      const match = /^\/api\/notes\/([^/]+)$/.exec(request.url)
+      if (!match) {
+        return undefined
+      }
+      const noteId = decodeURIComponent(match[1])
+      if (request.method === 'PATCH') {
+        if (options.updateNote) {
+          return options.updateNote(noteId, request.body)
+        }
+        const body = (request.body ?? {}) as { title?: string; body?: string | null }
+        return jsonResponse(
+          200,
+          makeMockNote({ id: noteId, title: body.title ?? 'Заметка', body: body.body ?? null }),
+        )
+      }
+      if (request.method === 'DELETE') {
+        if (options.deleteNote) {
+          return options.deleteNote(noteId)
+        }
+        return jsonResponse(204, undefined)
       }
       return undefined
     },
@@ -390,6 +631,46 @@ export function installApiMock(options: ApiMockOptions = {}): void {
       return undefined
     },
     (request) => {
+      if (request.method === 'PUT' && request.url === '/api/admin/site/icon') {
+        if (options.siteIcon?.onUpload) {
+          return options.siteIcon.onUpload(request.body as FormData | undefined)
+        }
+        return jsonResponse(200, {
+          contentType: 'image/png',
+          sizeBytes: 12,
+          updatedAt: new Date(0).toISOString(),
+          updatedBy: null,
+        })
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'DELETE' && request.url === '/api/admin/site/icon') {
+        if (options.siteIcon?.onReset) {
+          return options.siteIcon.onReset()
+        }
+        return jsonResponse(204, undefined)
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'GET' && request.url === '/api/students/me/preferences') {
+        return jsonResponse(200, preferencesState)
+      }
+      return undefined
+    },
+    (request) => {
+      if (request.method === 'PATCH' && request.url === '/api/students/me/preferences') {
+        if (options.updatePreferences) {
+          return options.updatePreferences(request.body)
+        }
+        const patch = (request.body ?? {}) as UpdatePreferencesInput
+        preferencesState = mergePreferences(preferencesState, patch)
+        return jsonResponse(200, preferencesState)
+      }
+      return undefined
+    },
+    (request) => {
       if (request.method === 'GET' && request.url === '/api/students/me') {
         return options.studentProfile
           ? jsonResponse(200, options.studentProfile)
@@ -405,7 +686,8 @@ export function installApiMock(options: ApiMockOptions = {}): void {
       const url =
         typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       const method = (init?.method ?? 'GET').toUpperCase()
-      const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined
+      const body =
+        typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : init?.body
       const headers = new Headers(init?.headers)
       const request: MockRequest = { url, method, body, headers }
       if (options.handler) {

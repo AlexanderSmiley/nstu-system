@@ -26,6 +26,7 @@ describe('раздел «Администрирование»', () => {
     expect(await screen.findByRole('heading', { name: 'Доступ запрещён' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('недостаточно прав')
     expect(screen.queryByText('Название сайта')).not.toBeInTheDocument()
+    expect(screen.queryByText('Иконка сайта')).not.toBeInTheDocument()
   })
 
   it('староста не видит «Администрирование» в сайдбаре', async () => {
@@ -163,5 +164,104 @@ describe('раздел «Администрирование»', () => {
     await user.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     expect(await screen.findByText('Новое название')).toBeInTheDocument()
+  })
+
+  it('администратор загружает иконку и видит предпросмотр', async () => {
+    const user = userEvent.setup()
+    let exists = false
+    installApiMock({
+      me: ADMIN_ME,
+      site: { name: 'Портал' },
+      siteIcon: {
+        exists: () => exists,
+        onUpload: () => {
+          exists = true
+          return jsonResponse(200, {
+            contentType: 'image/png',
+            sizeBytes: 2048,
+            updatedAt: new Date(0).toISOString(),
+            updatedBy: null,
+          })
+        },
+      },
+    })
+    renderApp(['/admin/general'])
+
+    const input = await screen.findByLabelText('Файл иконки')
+    await user.upload(input, new File(['png'], 'icon.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Загрузить' }))
+
+    expect(await screen.findByText('Иконка сохранена')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByAltText('Предпросмотр иконки').getAttribute('src') ?? '').toContain(
+        '/api/site/icon',
+      ),
+    )
+    expect(callsTo(vi.mocked(globalThis.fetch), '/api/admin/site/icon', 'PUT')).toBe(1)
+  })
+
+  it('показывает ошибку icon_too_large и не теряет выбранный файл', async () => {
+    const user = userEvent.setup()
+    installApiMock({
+      me: ADMIN_ME,
+      siteIcon: {
+        exists: false,
+        onUpload: () =>
+          jsonResponse(413, { error: 'icon_too_large', message: 'Слишком большой файл' }),
+      },
+    })
+    renderApp(['/admin/general'])
+
+    const input = await screen.findByLabelText('Файл иконки')
+    await user.upload(input, new File(['png'], 'icon.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Загрузить' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Файл слишком большой')
+    // The selected file is kept, so the user can retry immediately.
+    expect(screen.getByRole('button', { name: 'Загрузить' })).toBeEnabled()
+  })
+
+  it('показывает ошибку invalid_icon от сервера', async () => {
+    const user = userEvent.setup()
+    installApiMock({
+      me: ADMIN_ME,
+      siteIcon: {
+        exists: false,
+        onUpload: () =>
+          jsonResponse(400, { error: 'invalid_icon', message: 'Недопустимый формат' }),
+      },
+    })
+    renderApp(['/admin/general'])
+
+    const input = await screen.findByLabelText('Файл иконки')
+    await user.upload(input, new File(['not-an-icon'], 'evil.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Загрузить' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Недопустимый файл')
+  })
+
+  it('сброс иконки возвращает состояние «иконка не задана»', async () => {
+    const user = userEvent.setup()
+    let exists = true
+    installApiMock({
+      me: ADMIN_ME,
+      siteIcon: {
+        exists: () => exists,
+        onReset: () => {
+          exists = false
+          return jsonResponse(204, undefined)
+        },
+      },
+    })
+    renderApp(['/admin/general'])
+
+    const resetButton = await screen.findByRole('button', { name: 'Сбросить' })
+    await waitFor(() => expect(resetButton).toBeEnabled())
+    await user.click(resetButton)
+
+    await waitFor(() =>
+      expect(screen.getByAltText('Предпросмотр иконки').getAttribute('src')).toBe('/favicon.svg'),
+    )
+    expect(callsTo(vi.mocked(globalThis.fetch), '/api/admin/site/icon', 'DELETE')).toBe(1)
   })
 })

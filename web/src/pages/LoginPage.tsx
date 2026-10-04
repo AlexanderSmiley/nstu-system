@@ -26,13 +26,23 @@ function resolveFrom(location: Location): string {
   return '/'
 }
 
+/**
+ * Maps a failed login to a user-facing message. The server's stable error code is
+ * the source of truth: a `403` is only a block when it explicitly says
+ * `account_blocked`. Every other `403` (e.g. `password_change_required` from a
+ * leftover restricted cookie while the session is being re-established) falls back
+ * to the server `message`, never to the misleading "account blocked" text.
+ */
 function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'account_blocked') {
+      return 'Аккаунт заблокирован'
+    }
+    if (error.code === 'password_change_required') {
+      return 'Нужно сменить пароль. Перейдите к смене пароля.'
+    }
     if (error.status === 401) {
       return 'Неверные данные'
-    }
-    if (error.status === 403) {
-      return 'Аккаунт заблокирован'
     }
     return error.message
   }

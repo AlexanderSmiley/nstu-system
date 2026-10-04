@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SITE_NAME } from '../api/site'
@@ -181,5 +181,42 @@ describe('оболочка интерфейса и иконка пользова
 
     await user.click(button)
     expect(screen.queryByTestId('user-menu')).not.toBeInTheDocument()
+  })
+
+  it('сайдбар гостя содержит «События» и «Календарь», но не «Заметки»/«Настройки»/«Администрирование»', async () => {
+    installApiMock({ me: GUEST_ME })
+    renderApp(['/'])
+
+    await screen.findByTestId('module-grid')
+    const nav = screen.getByRole('navigation', { name: 'Основная навигация' })
+    expect(within(nav).getByRole('link', { name: 'События' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'Календарь' })).toBeInTheDocument()
+    expect(within(nav).queryByRole('link', { name: 'Заметки' })).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('link', { name: 'Настройки' })).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('link', { name: 'Администрирование' })).not.toBeInTheDocument()
+  })
+
+  it('сайдбар старосты содержит «Календарь» и «Заметки», но не «Администрирование»', async () => {
+    installApiMock({ me: STAFF_ME, studentProfile: STUDENT_PROFILE })
+    renderApp(['/'])
+
+    await screen.findByTestId('module-grid')
+    const nav = screen.getByRole('navigation', { name: 'Основная навигация' })
+    expect(within(nav).getByRole('link', { name: 'События' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'Календарь' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'Заметки' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'Настройки' })).toBeInTheDocument()
+    expect(within(nav).queryByRole('link', { name: 'Администрирование' })).not.toBeInTheDocument()
+  })
+
+  it('клик по пустому месту шапки не уводит на главную', async () => {
+    installApiMock({ me: STUDENT_ME })
+    renderApp(['/events'])
+
+    expect(await screen.findByRole('heading', { name: 'События' })).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('app-header-brand'))
+
+    expect(screen.getByRole('heading', { name: 'События' })).toBeInTheDocument()
+    expect(screen.queryByTestId('module-grid')).not.toBeInTheDocument()
   })
 })

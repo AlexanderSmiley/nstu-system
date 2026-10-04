@@ -30,6 +30,19 @@ export interface SiteInfo {
   name: string
 }
 
+/**
+ * Metadata of the stored site icon (`GET /api/site/icon` and the admin upload).
+ * `updatedAt`/`updatedBy` come from the upload response; `etag` from the public
+ * GET and is used to bust the browser cache when the icon changes.
+ */
+export interface SiteIconInfo {
+  contentType: string | null
+  sizeBytes: number | null
+  etag?: string | null
+  updatedAt?: string | null
+  updatedBy?: string | null
+}
+
 /** Event lifecycle status (design.md D15). */
 export type EventStatus = 'OPEN' | 'CLOSED' | 'ARCHIVED'
 
@@ -194,4 +207,120 @@ export interface StudentProfile {
   /** Additive field: display name of the group; `null` when unavailable. */
   groupName?: string | null
   contacts: Record<string, unknown> | null
+}
+
+/** Audience of a calendar entry (change add-calendar-module). */
+export type CalendarAudience = 'ME' | 'GROUP' | 'STAFF'
+
+/** One element of `GET /api/calendar` (dates are plain ISO strings, no time zone). */
+export interface CalendarEntry {
+  id: string
+  title: string
+  description: string | null
+  startsOn: string
+  startsAt: string | null
+  audience: CalendarAudience
+  authorAccountId: string
+  /**
+   * Display name of the author snapshotted at creation
+   * (change add-preferences-and-calendar-ui; design.md D5). `null` when it could
+   * not be resolved; the card then shows a dash instead of a name.
+   */
+  authorDisplayName: string | null
+  /** `true` when the caller is the author; drives the edit/delete actions. */
+  mine: boolean
+}
+
+/**
+ * Body of `POST /api/calendar`. `from`/`to` are the calendar window currently
+ * displayed by the client; the server rejects a `startsOn` outside of it with
+ * `invalid_date`, which is how the spec's "date must be in the shown window"
+ * rule is enforced server-side.
+ */
+export interface CreateCalendarEntryInput {
+  title: string
+  description?: string | null
+  startsOn: string
+  startsAt?: string | null
+  audience: CalendarAudience
+  from: string
+  to: string
+}
+
+/**
+ * Body of `PATCH /api/calendar/{id}` (design.md D6). Every field is optional; the
+ * client always sends the displayed window (`from`/`to`) so the server can apply
+ * the same "date inside the shown window" rule as on creation.
+ */
+export interface UpdateCalendarEntryInput {
+  title?: string
+  description?: string | null
+  startsOn?: string
+  startsAt?: string | null
+  audience?: CalendarAudience
+  from: string
+  to: string
+}
+
+/** Module identifiers persisted in the per-account preferences. */
+export type ModuleId = 'events' | 'calendar' | 'notes'
+
+/** Per-account UI preferences returned by `GET/PATCH /api/students/me/preferences`. */
+export interface Preferences {
+  /** Enabled state of every home-screen module. */
+  modules: Record<ModuleId, boolean>
+  /** Soft fill colour keyed by calendar audience (change D4). */
+  calendarColors: Record<CalendarAudience, string>
+}
+
+/** Partial update for `PATCH /api/students/me/preferences` (design.md D3). */
+export interface UpdatePreferencesInput {
+  modules?: Partial<Record<ModuleId, boolean>>
+  calendarColors?: Partial<Record<CalendarAudience, string>>
+}
+
+/** Metadata of one attachment of a note (change add-notes-module). */
+export interface NoteAttachmentInfo {
+  id: string
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+/**
+ * One personal note of `GET /api/notes`. The `body` is plain text and must be
+ * rendered as text (`white-space: pre-wrap`), never as markup.
+ */
+export interface Note {
+  id: string
+  title: string
+  body: string | null
+  createdAt: string
+  updatedAt: string
+  attachments: NoteAttachmentInfo[]
+}
+
+/** Attachment storage usage of the account. */
+export interface NotesQuota {
+  usedBytes: number
+  limitBytes: number
+}
+
+/** Body of `GET /api/notes`. */
+export interface NotesResponse {
+  notes: Note[]
+  quota: NotesQuota
+}
+
+/** Input for `POST /api/notes`. */
+export interface CreateNoteInput {
+  title: string
+  body?: string | null
+}
+
+/** Input for `PATCH /api/notes/{id}`; an absent field keeps its current value. */
+export interface UpdateNoteInput {
+  title?: string
+  body?: string | null
 }

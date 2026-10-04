@@ -68,9 +68,17 @@ button {
   border-bottom: 1px solid var(--color-border);
 }
 
-.app-header__title {
+/* Centres the title without making the whole header clickable. */
+.app-header__brand {
   flex: 1;
-  text-align: center;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.app-header__title {
+  width: fit-content;
+  max-width: 100%;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -545,6 +553,28 @@ button {
   max-width: 520px;
 }
 
+.site-icon-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.site-icon-preview__image {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  padding: 2px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.admin-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .carry-over {
   margin-top: 12px;
 }
@@ -813,4 +843,428 @@ button {
 
 .theme-toggle:hover {
   background: var(--color-tile);
+}
+
+/* ---------- Calendar ---------- */
+
+.calendar-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.calendar-range {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-form {
+  margin-bottom: 16px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.calendar-grid__weekday {
+  padding: 4px 0;
+  text-align: center;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 110px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+}
+
+.calendar-day__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.calendar-day__date {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.calendar-day__entries,
+.calendar-list__entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-entry-item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  /*
+   * Opaque fallback first; the second declaration wins only when the browser
+   * supports `color-mix`. The tint is always applied with the same alpha
+   * (`--entry-alpha`), so a saturated user colour is exactly as soft as the
+   * defaults and only the hue changes (design.md D4, change UI group 5).
+   */
+  background-color: var(--color-tile);
+  background-color: color-mix(
+    in srgb,
+    var(--entry-color, var(--color-tile)) var(--entry-alpha, 22%),
+    transparent
+  );
+}
+
+.calendar-entry:hover {
+  filter: brightness(0.97);
+}
+
+.calendar-entry__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+
+.calendar-entry__title {
+  font-weight: 600;
+}
+
+.calendar-list {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-list__day {
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+}
+
+.calendar-list__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.calendar-list__date {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Phone: swap the grid for the list of the same 14 days (design.md D6). */
+@media (max-width: 640px) {
+  .calendar-grid {
+    display: none;
+  }
+
+  .calendar-list {
+    display: flex;
+  }
+}
+
+/* ---------- Notes ---------- */
+
+.notes-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notes-quota {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-tile);
+  font-weight: 600;
+}
+
+.notes-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notes-list__item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.notes-list__item--active {
+  border-color: var(--color-primary);
+  background: var(--color-tile);
+}
+
+.notes-list__title {
+  font-weight: 600;
+}
+
+.notes-list__meta {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.notes-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-card);
+}
+
+.notes-editor__body {
+  min-height: 180px;
+  resize: vertical;
+  /* Plain text only: no markup is ever executed. */
+  white-space: pre-wrap;
+}
+
+.notes-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+
+.notes-attachments h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.notes-attachments__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notes-attachment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-tile);
+}
+
+.notes-attachment__name {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.form-success {
+  margin: 0;
+  color: var(--color-primary);
+}
+
+@media (max-width: 720px) {
+  .notes-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Calendar card modal ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(9, 14, 24, 0.55);
+}
+
+.modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 90svh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal__title {
+  margin: 0;
+  font-size: 20px;
+  word-break: break-word;
+}
+
+/*
+ * Long description: collapsed to three lines with a real ellipsis, expanded
+ * downward in place. `overflow-wrap` keeps long tokens from forcing a
+ * horizontal scrollbar.
+ */
+.calendar-card__description {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.calendar-card__description--expanded {
+  display: block;
+  -webkit-line-clamp: initial;
+  line-clamp: initial;
+  overflow: visible;
+}
+
+.calendar-card__description-toggle {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.calendar-card__description-toggle:hover {
+  text-decoration: underline;
+}
+
+/*
+ * Card actions live in their own footer below the details, so they never
+ * overlap the description. Compact buttons wrap onto a new row on narrow
+ * screens.
+ */
+.calendar-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---------- Settings ---------- */
+
+.settings-section {
+  margin-top: 24px;
+}
+
+.settings-section h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.settings-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+}
+
+.settings-toggle,
+.settings-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.settings-color input[type='color'] {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
 }

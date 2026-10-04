@@ -20,9 +20,16 @@ export function Header({ onToggleSidebar }: HeaderProps) {
       >
         <MenuIcon />
       </button>
-      <Link to="/" className="app-header__title">
-        {siteName}
-      </Link>
+      {/*
+        The link is wrapped so only the text itself is clickable: the wrapper
+        stretches to centre the title, but clicks on its empty part do nothing
+        (access spec — "Область клика по названию сайта").
+      */}
+      <div className="app-header__brand" data-testid="app-header-brand">
+        <Link to="/" className="app-header__title">
+          {siteName}
+        </Link>
+      </div>
       <UserMenu />
     </header>
   )

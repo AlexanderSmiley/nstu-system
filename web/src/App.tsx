@@ -1,9 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
+import { useSiteIcon } from './hooks/useSiteIcon'
 import { AdminEventsPage } from './pages/AdminEventsPage'
 import { AdminGeneralPage } from './pages/AdminGeneralPage'
 import { AdminPage } from './pages/AdminPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
+import { CalendarPage } from './pages/CalendarPage'
 import { CreateEventPage } from './pages/CreateEventPage'
 import { EventHistoryPage } from './pages/EventHistoryPage'
 import { EventJournalPage } from './pages/EventJournalPage'
@@ -11,6 +13,7 @@ import { EventSettingsPage } from './pages/EventSettingsPage'
 import { EventsPage } from './pages/EventsPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
+import { NotesPage } from './pages/NotesPage'
 import { PasswordChangePage } from './pages/PasswordChangePage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -20,6 +23,8 @@ import { RequireRole } from './routes/RequireRole'
 import { SessionGate } from './routes/SessionGate'
 
 function App() {
+  useSiteIcon()
+
   return (
     <SessionGate>
       <Routes>
@@ -30,6 +35,16 @@ function App() {
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
             <Route path="events" element={<EventsPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
+            {/* Notes belong to accounts only; a guest hits the 403 screen. */}
+            <Route
+              path="notes"
+              element={
+                <RequireRole role="STUDENT">
+                  <NotesPage />
+                </RequireRole>
+              }
+            />
             <Route path="events/history" element={<EventHistoryPage />} />
             <Route
               path="events/new"
@@ -49,7 +64,15 @@ function App() {
             />
             {/* Journal visibility is decided by the event at page level (design.md D1). */}
             <Route path="e/:slug/journal" element={<EventJournalPage />} />
-            <Route path="settings" element={<SettingsPage />} />
+            {/* Settings belong to accounts only; a guest hits the 403 screen. */}
+            <Route
+              path="settings"
+              element={
+                <RequireRole role="STUDENT">
+                  <SettingsPage />
+                </RequireRole>
+              }
+            />
             <Route path="profile" element={<ProfilePage />} />
             <Route
               path="admin"
