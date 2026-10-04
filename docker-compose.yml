@@ -1,16 +1,32 @@
 # Все секреты и настройки читаются из файла `.env` (см. `.env.example`).
-# В сам compose-файл секреты не попадают. Наружу публикуется только порт 80 сервиса `web`.
+# В сам compose-файл секреты не попадают. Наружу публикуется только порт 80 сервиса `web`
+# (и то лишь на loopback — публичный TLS терминирует reverse-proxy, см. docker-compose.prod.yml).
+#
+# Лимиты RAM/CPU заданы на уровне compose (mem_limit/cpus, без deploy.resources), а ротация
+# логов включена для всех сервисов через якорь x-logging, чтобы json-file логи не заполнили диск.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   db:
     restart: unless-stopped
     image: postgres:16-alpine
+    mem_limit: 576m
+    cpus: 1.0
+    logging: *default-logging
     env_file:
       - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Тюнинг под лимит 576m: shared_buffers ~1/3 лимита, max_connections снижен до 50
+    # (5 JVM-сервисов с пулами по 10 соединений + запас), work_mem не раздувает параллельные сортировки.
+    command: ["postgres", "-c", "shared_buffers=192MB", "-c", "effective_cache_size=512MB", "-c", "max_connections=50", "-c", "work_mem=8MB"]
     volumes:
       - db-data:/var/lib/postgresql/data
     expose:
@@ -24,11 +40,17 @@ services:
   rabbitmq:
     restart: unless-stopped
     image: rabbitmq:3.13-management-alpine
+    mem_limit: 448m
+    cpus: 0.5
+    logging: *default-logging
     env_file:
       - .env
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      # Ограничиваем Erlang VM двумя планировщиками (по числу выделенных CPU), чтобы
+      # VM не резервировала потоки под все ядра хоста и не выходила за mem_limit.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+S 2:2"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     expose:
@@ -42,6 +64,9 @@ services:
 
   gateway:
     restart: unless-stopped
+    mem_limit: 384m
+    cpus: 1.0
+    logging: *default-logging
     build:
       context: .
       dockerfile: services/gateway/Dockerfile
@@ -54,6 +79,8 @@ services:
       NSTU_ROUTES_EVENT_URI: ${NSTU_ROUTES_EVENT_URI:-http://event-service:8083}
       NSTU_ROUTES_NOTIFICATION_URI: ${NSTU_ROUTES_NOTIFICATION_URI:-http://notification-service:8084}
       NSTU_CORS_ALLOWED_ORIGINS: ${NSTU_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+      # Heap = 60% от mem_limit, SerialGC экономит память на одном ядре, direct memory ограничен.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m"
     expose:
       - "8080"
     depends_on:
@@ -70,6 +97,9 @@ services:
 
   auth-service:
     restart: unless-stopped
+    mem_limit: 448m
+    cpus: 1.0
+    logging: *default-logging
     build:
       context: .
       dockerfile: services/auth-service/Dockerfile
@@ -89,6 +119,8 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       # httpOnly cookie attribute: leave false for plain HTTP, set true behind HTTPS.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Heap = 60% от mem_limit, SerialGC экономит память на одном ядре, direct memory ограничен.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m"
     expose:
       - "8081"
     depends_on:
@@ -105,6 +137,9 @@ services:
 
   student-service:
     restart: unless-stopped
+    mem_limit: 448m
+    cpus: 1.0
+    logging: *default-logging
     build:
       context: .
       dockerfile: services/student-service/Dockerfile
@@ -122,6 +157,8 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # Heap = 60% от mem_limit, SerialGC экономит память на одном ядре, direct memory ограничен.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m"
     expose:
       - "8082"
     depends_on:
@@ -138,6 +175,9 @@ services:
 
   event-service:
     restart: unless-stopped
+    mem_limit: 640m
+    cpus: 1.0
+    logging: *default-logging
     build:
       context: .
       dockerfile: services/event-service/Dockerfile
@@ -156,6 +196,8 @@ services:
       STUDENT_SERVICE_URL: http://student-service:8082
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # Самый нагруженный сервис: heap 60% от 640m, direct memory увеличен до 128m.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=128m"
     expose:
       - "8083"
     depends_on:
@@ -172,6 +214,9 @@ services:
 
   notification-service:
     restart: unless-stopped
+    mem_limit: 320m
+    cpus: 0.5
+    logging: *default-logging
     build:
       context: .
       dockerfile: services/notification-service/Dockerfile
@@ -182,6 +227,8 @@ services:
       SPRING_RABBITMQ_PORT: "5672"
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS}
+      # Heap = 60% от mem_limit, SerialGC экономит память на одном ядре, direct memory ограничен.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m"
     expose:
       - "8084"
     depends_on:
@@ -198,13 +245,18 @@ services:
 
   web:
     restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.5
+    logging: *default-logging
     build:
       context: .
       dockerfile: web/Dockerfile
     env_file:
       - .env
     ports:
-      - "${WEB_PORT:-8080}:80"
+      # Только loopback: публичный доступ — через reverse-proxy (NPM) в docker-сети,
+      # см. docker-compose.prod.yml. Прямой доступ возможен лишь с самого хоста.
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
     depends_on:
       gateway:
         condition: service_started

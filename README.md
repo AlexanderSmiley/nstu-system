@@ -48,11 +48,11 @@ auth-service  student-service  event-service   notification-service
 `student-service`, `/api/events/**` → `event-service`, `/api/notifications/**` →
 `notification-service`.
 
-Сервисы compose (наружу опубликован только порт `web`):
+Сервисы compose (порт `web` публикуется только на loopback хоста):
 
 | Сервис | Образ / сборка | Порт | Назначение |
 |---|---|---|---|
-| `web` | `web/Dockerfile` (nginx) | **80 → 80 (публичный)** | Раздача SPA и проксирование `/api` в gateway |
+| `web` | `web/Dockerfile` (nginx) | **127.0.0.1:${WEB_PORT} → 80 (host loopback)** | Раздача SPA и проксирование `/api` в gateway |
 | `gateway` | `services/gateway/Dockerfile` | 8080 (внутренний) | Единая точка входа, маршрутизация, валидация access-токена |
 | `auth-service` | `services/auth-service/Dockerfile` | 8081 (внутренний) | Аутентификация, пользователи, название сайта |
 | `student-service` | `services/student-service/Dockerfile` | 8082 (внутренний) | Профили студентов |
@@ -78,6 +78,26 @@ auth-service  student-service  event-service   notification-service
 >
 > (При сборке Docker-образов используется `eclipse-temurin:21-jdk-alpine`, поэтому
 > локальный JDK для `docker compose` не нужен.)
+
+## Требования к серверу
+
+Стек рассчитан на небольшой VPS:
+
+- **RAM: минимум 4 ГБ.** Суммарный лимит контейнеров — ≈ **3,3 ГБ**
+  (`gateway` 384 + `auth-service` 448 + `student-service` 448 + `event-service` 640 +
+  `notification-service` 320 + `db` 576 + `rabbitmq` 448 + `web` 64 МБ), плюс запас на
+  ядро хоста и docker-демон. Меньше 4 ГБ почти гарантированно приведёт к OOM.
+- **Диск: ~40 ГБ.** Полезные данные приложения малы — квота заметок **10 МБ на
+  пользователя**, очередь/журнал/архив — текст. Место занимают в основном:
+  - образы приложения и базовых сервисов (~1,5–2 ГБ);
+  - кэш сборки BuildKit (1–3 ГБ; можно чистить `docker builder prune`);
+  - ОС и чужие сервисы на том же хосте (в т.ч. Nginx Proxy Manager и его SSL/логи).
+
+> **Сборка на сервере.** Компиляция образов (`Gradle` для пяти Java-сервисов и
+> `npm` для frontend) запускает тяжёлые сборщики и **временно требует ещё +2–3 ГБ RAM**
+> поверх лимитов рантайма. На VPS с 2 ГБ собирайте образы на другой машине и
+> заливайте готовые, либо добавляйте swap и собирайте сервисы последовательно
+> (`COMPOSE_PARALLEL_LIMIT=1`).
 
 ## Первый запуск
 
@@ -246,19 +266,96 @@ docker compose down -v         # дополнительно удалить то�
 - `notification-service` в MVP только логирует доменные события (уведомления не
   отправляются).
 
-## Развёртывание на VPS за Nginx Proxy Manager
+## Продакшн-развёртывание
 
-Приложение публикует наружу единственный порт — веб-морду (`web`, по умолчанию `${WEB_PORT}` → контейнерный 80). Остальные сервисы наружу не отдаются.
+Базовый `docker-compose.yml` публикует `web` только на **loopback**
+(`127.0.0.1:${WEB_PORT}`), а override-файл `docker-compose.prod.yml` подключает `web` к
+внешней docker-сети Nginx Proxy Manager (NPM) с сетевым алиасом `nstu-web`. Так NPM
+достаёт контейнер напрямую по имени, без проброса порта на все интерфейсы хоста.
+Все команды ниже выполняются из корня репозитория.
 
-1. На VPS склонируйте/скопируйте проект и задайте секреты в `.env` (см. `.env.example`):
-   - `WEB_PORT=8080` — порт, на который NPM будет проксировать домен (любой свободный);
-   - `COOKIE_SECURE=true` — обязательно, т.к. доступ идёт по HTTPS через NPM;
-   - `NSTU_CORS_ALLOWED_ORIGINS=https://<домен>` — публичный origin, иначе браузерные POST-запросы будут отбиваться 403 (same-origin проверка gateway);
-   - остальные секреты — как обычно (`POSTGRES_*`, `RABBITMQ_*`, `JWT_SECRET` ≥32 байта, `INTERNAL_TOKEN`, `ADMIN_USERNAME`/`ADMIN_PASSWORD`).
-2. `docker compose up -d --build`
-3. В NPM создайте Proxy Host: домен → `http://<IP-сервера-или-docker0-шлюза>:<WEB_PORT>`.
-   - NPM обычно работает в собственном контейнере, поэтому указывайте не `localhost`, а IP хоста в docker-сети (например `172.17.0.1`) или LAN-адрес сервера.
-   - Включите Let's Encrypt / Force SSL, чтобы домен работал по HTTPS.
-4. Проверьте `docker compose ps` (8/8 healthy) и откройте домен: должен отобразиться экран входа.
+### 1. Клонирование и `.env`
 
-Порты `db`/`rabbitmq`/сервисов наружу не публикуются; при необходимости ограничьте `WEB_PORT` файрволом (ufw).
+```bash
+git clone <repo-url> nstu-system
+cd nstu-system
+cp .env.example .env
+```
+
+Заполните `.env` по чеклисту:
+
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — БД и учётные данные PostgreSQL;
+- `RABBITMQ_DEFAULT_USER`, `RABBITMQ_DEFAULT_PASS` — учётные данные RabbitMQ;
+- `JWT_SECRET` — **минимум 32 байта** случайных данных (HS256);
+- `INTERNAL_TOKEN` — токен внутренних вызовов между сервисами;
+- `ADMIN_USERNAME`, `ADMIN_PASSWORD` — учётные данные первого администратора;
+- `WEB_PORT=8080` — порт `web` на loopback-интерфейсе хоста (наружу не публикуется);
+- `NPM_NETWORK=remnawave-network` — имя внешней docker-сети NPM
+  (узнать на сервере: `docker network ls`);
+- `COOKIE_SECURE=true` — **при работе за HTTPS** (см. шаг 4);
+- `NSTU_CORS_ALLOWED_ORIGINS=https://<домен>` — публичный origin, иначе браузерные
+  POST-запросы будут отбиваться 403 (same-origin проверка gateway).
+
+### 2. Сборка и запуск
+
+На VPS со скромной RAM собирайте образы **последовательно**, чтобы `Gradle`/`npm`
+не съели память одновременно (на время сборки нужно +2–3 ГБ RAM, см. «Требования к серверу»):
+
+```bash
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Проверьте, что все 8 сервисов поднялись и стали healthy:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+```
+
+### 3. Proxy Host в Nginx Proxy Manager
+
+В NPM создайте **Proxy Host**:
+
+- **Domain Names** — ваш домен;
+- **Scheme** — `http`;
+- **Forward Hostname** — `nstu-web` (сетевой алиас контейнера `web` из `docker-compose.prod.yml`);
+- **Forward Port** — `80`.
+
+TLS терминирует NPM: до контейнера трафик идёт по HTTP внутри docker-сети, а приложение
+узнаёт про HTTPS из заголовка `X-Forwarded-Proto` (gateway настроен на
+`forward-headers-strategy: framework` и использует схему из этого заголовка для
+same-origin проверок).
+
+### 4. TLS
+
+1. Сначала попробуйте встроенный в NPM Let's Encrypt: в Proxy Host → **SSL** →
+   **Request a new SSL Certificate**, включите **Force SSL**.
+2. Если встроенный ACME не сработает (нет доступа к Let's Encrypt или занят 80-й порт),
+   запасной путь — ручной `certbot` с DNS-задачей:
+
+   ```bash
+   certbot certonly --manual --preferred-challenges dns -d <домен>
+   ```
+
+   Подтвердите владение доменом, создав TXT-запись `_acme-challenge.<домен>` с выданным
+   значением (продление — вручную раз в ~90 дней). Затем в NPM Proxy Host → **SSL** →
+   **Custom Certificate** вставьте содержимое
+   `/etc/letsencrypt/live/<домен>/fullchain.pem` и
+   `/etc/letsencrypt/live/<домен>/privkey.pem`.
+3. После включения HTTPS выставьте в `.env`:
+
+   ```
+   COOKIE_SECURE=true
+   NSTU_CORS_ALLOWED_ORIGINS=https://<домен>
+   ```
+
+   и перезапустите `auth-service` (cookie-флаг и CORS перечитываются при старте):
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d auth-service
+   ```
+
+### 5. Проверка
+
+`docker compose ... ps` должен показать 8/8 healthy; откройте `https://<домен>` — появится
+экран входа. Порты `db`, `rabbitmq` и backend-сервисов наружу не публикуются вовсе, а
+`web` слушает только `127.0.0.1:${WEB_PORT}`.

@@ -1,0 +1,27 @@
+# Продакшн-override для запуска за Nginx Proxy Manager (NPM).
+#
+# Базовый стек публикует `web` только на 127.0.0.1:${WEB_PORT}, поэтому NPM не может
+# достучаться до него по IP хоста, если сам работает в контейнере. Этот override
+# подключает `web` к внешней docker-сети, в которой уже находится NPM, и даёт сервису
+# сетевой алиас `nstu-web` — именно его указывайте как Forward Hostname в NPM.
+#
+# Запуск (сборка последовательно, на VPS со скромной RAM):
+#   COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Остановка:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+#
+# Имя внешней сети задаётся переменной NPM_NETWORK в `.env` (по умолчанию remnawave-network).
+# Узнать его на сервере: `docker network ls`.
+
+networks:
+  npm:
+    external: true
+    name: ${NPM_NETWORK:-remnawave-network}
+
+services:
+  web:
+    networks:
+      default: {}
+      npm:
+        aliases:
+          - nstu-web
