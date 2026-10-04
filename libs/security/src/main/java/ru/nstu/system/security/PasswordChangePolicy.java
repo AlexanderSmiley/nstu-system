@@ -7,10 +7,24 @@ import java.util.Locale;
  *
  * <p>While a mandatory password change is pending the only reachable routes are
  * {@code POST /api/auth/password}, {@code POST /api/auth/logout},
- * {@code GET /api/auth/me} and the public {@code GET /api/site} (the
- * change-password screen displays the site name); everything else is denied. The
- * check is shared by the reactive gateway and by every servlet service so that
- * the rule cannot drift.</p>
+ * {@code GET /api/auth/me}, the public session entry points
+ * {@code POST /api/auth/login}, {@code POST /api/auth/refresh},
+ * {@code POST /api/auth/guest} and the public {@code GET /api/site} /
+ * {@code GET /api/site/icon} (the change-password screen displays the site name
+ * and its icon); everything else is denied.</p>
+ *
+ * <p>The public session entry points are allowlisted on purpose. The browser
+ * keeps the restricted {@code access_token} cookie until the password is actually
+ * changed, and the reactive gateway already exposes login/refresh/guest as
+ * anonymous surface ({@code GatewayRouteMatcher.isPublic}). Denying them here
+ * would let a leftover cookie block the very requests that re-authenticate the
+ * user or rotate the session. This does not widen access: a token issued by
+ * {@code /api/auth/refresh} (or a fresh login) still carries the
+ * {@code pwd_change_required} flag read from the database, so every other route
+ * remains forbidden until the password changes.</p>
+ *
+ * <p>The check is shared by the reactive gateway and by every servlet service so
+ * that the rule cannot drift.</p>
  */
 public final class PasswordChangePolicy {
 
@@ -18,9 +32,17 @@ public final class PasswordChangePolicy {
 
     static final String AUTH_LOGOUT_PATH = "/api/auth/logout";
 
+    static final String AUTH_LOGIN_PATH = "/api/auth/login";
+
+    static final String AUTH_REFRESH_PATH = "/api/auth/refresh";
+
+    static final String AUTH_GUEST_PATH = "/api/auth/guest";
+
     static final String AUTH_ME_PATH = "/api/auth/me";
 
     static final String SITE_PATH = "/api/site";
+
+    static final String SITE_ICON_PATH = "/api/site/icon";
 
     private PasswordChangePolicy() {
     }
@@ -44,9 +66,13 @@ public final class PasswordChangePolicy {
         }
         return switch (method) {
             case "POST" -> normalizedPath.equals(AUTH_PASSWORD_PATH)
-                    || normalizedPath.equals(AUTH_LOGOUT_PATH);
+                    || normalizedPath.equals(AUTH_LOGOUT_PATH)
+                    || normalizedPath.equals(AUTH_LOGIN_PATH)
+                    || normalizedPath.equals(AUTH_REFRESH_PATH)
+                    || normalizedPath.equals(AUTH_GUEST_PATH);
             case "GET" -> normalizedPath.equals(AUTH_ME_PATH)
-                    || normalizedPath.equals(SITE_PATH);
+                    || normalizedPath.equals(SITE_PATH)
+                    || normalizedPath.equals(SITE_ICON_PATH);
             default -> false;
         };
     }

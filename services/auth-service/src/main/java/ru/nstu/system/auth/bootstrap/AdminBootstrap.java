@@ -13,6 +13,10 @@ import org.springframework.util.StringUtils;
 import ru.nstu.system.auth.domain.Account;
 import ru.nstu.system.auth.domain.AccountRepository;
 import ru.nstu.system.auth.domain.Role;
+import ru.nstu.system.contracts.events.AccountCreatedPayload;
+import ru.nstu.system.contracts.events.DomainEvent;
+import ru.nstu.system.contracts.events.EventTypes;
+import ru.nstu.system.contracts.outbox.OutboxWriter;
 
 /**
  * Creates the single administrator account on first startup
@@ -45,15 +49,18 @@ public class AdminBootstrap {
 
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OutboxWriter outboxWriter;
     private final String adminUsername;
     private final String adminPassword;
 
     public AdminBootstrap(AccountRepository accountRepository,
                           PasswordEncoder passwordEncoder,
+                          OutboxWriter outboxWriter,
                           @Value("${admin.username:}") String adminUsername,
                           @Value("${admin.password:}") String adminPassword) {
         this.accountRepository = accountRepository;
         this.passwordEncoder = passwordEncoder;
+        this.outboxWriter = outboxWriter;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
     }
@@ -97,6 +104,7 @@ public class AdminBootstrap {
         try {
             accountRepository.saveAndFlush(admin);
             log.info("Bootstrapped administrator account '{}' with mandatory password change", adminUsername);
+            publishAccountCreated(admin);
             return true;
         } catch (DataIntegrityViolationException ex) {
             String causeMessage = ex.getMostSpecificCause().getMessage();
@@ -119,6 +127,34 @@ public class AdminBootstrap {
             log.error("Administrator bootstrap failed with an unexpected data integrity violation: {}",
                     causeMessage, ex);
             throw ex;
+        }
+    }
+
+    /**
+     * Emits {@code account.created} for a freshly bootstrapped administrator so
+     * that {@code student-service} can create the matching profile (and the
+     * calendar author snapshot can resolve a display name).
+     *
+     * <p>The outbox row is committed by the surrounding transaction when there is
+     * one; otherwise the {@link OutboxWriter} autocommits. A failure here must
+     * never block the installation: the administrator has to be able to sign in
+     * even if the message infrastructure is temporarily unavailable, and the
+     * missing profile is recoverable. The exception is therefore logged with its
+     * stack trace rather than swallowed silently.</p>
+     */
+    private void publishAccountCreated(Account admin) {
+        try {
+            outboxWriter.write(DomainEvent.of(
+                    EventTypes.ACCOUNT_CREATED,
+                    new AccountCreatedPayload(
+                            admin.getId(),
+                            admin.getUsername(),
+                            admin.getRole().name(),
+                            admin.getDisplayName())));
+        } catch (RuntimeException ex) {
+            log.warn("Administrator account '{}' was created but the '{}' event could not be written to the "
+                            + "outbox; the student profile will stay missing until it is backfilled",
+                    admin.getUsername(), EventTypes.ACCOUNT_CREATED, ex);
         }
     }
 

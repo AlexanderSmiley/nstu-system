@@ -1,11 +1,13 @@
 package ru.nstu.system.auth.web;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import ru.nstu.system.auth.web.dto.ApiErrorResponse;
 
 /**
@@ -38,5 +40,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadableBody(HttpMessageNotReadableException exception) {
         return ResponseEntity.badRequest().body(new ApiErrorResponse("invalid_request", "Некорректный запрос"));
+    }
+
+    /**
+     * The servlet multipart ceiling is a coarse guard; a file larger than it
+     * never reaches the controller. Reuse the precise icon error so the SPA
+     * shows the same message as for the application-level limit.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiErrorResponse("icon_too_large", "Размер иконки не должен превышать 256 КБ"));
     }
 }

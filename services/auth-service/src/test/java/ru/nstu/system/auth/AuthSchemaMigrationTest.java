@@ -76,7 +76,19 @@ class AuthSchemaMigrationTest {
                 String.class);
 
         assertThat(tables)
-                .contains("account", "refresh_token", "outbox", "site_setting", "flyway_schema_history");
+                .contains("account", "refresh_token", "outbox", "site_setting", "site_asset",
+                        "flyway_schema_history");
+    }
+
+    @Test
+    void createsSiteAssetTableWithExpectedColumns() {
+        List<String> columns = jdbc.queryForList(
+                "select column_name from information_schema.columns"
+                        + " where table_schema = 'auth' and table_name = 'site_asset'",
+                String.class);
+
+        assertThat(columns).containsExactlyInAnyOrder(
+                "kind", "content_type", "bytes", "size_bytes", "updated_at", "updated_by");
     }
 
     @Test

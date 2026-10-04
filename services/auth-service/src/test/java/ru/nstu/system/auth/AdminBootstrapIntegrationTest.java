@@ -2,16 +2,21 @@ package ru.nstu.system.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import ru.nstu.system.auth.bootstrap.AdminBootstrap;
 import ru.nstu.system.auth.domain.Account;
 import ru.nstu.system.auth.domain.AccountRepository;
 import ru.nstu.system.auth.domain.Role;
+import ru.nstu.system.contracts.events.EventTypes;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -49,6 +54,12 @@ class AdminBootstrapIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Test
     void firstStartCreatesExactlyOneAdminWithMandatoryPasswordChange() {
         // The ApplicationReadyEvent listener already ran during context startup.
@@ -82,6 +93,43 @@ class AdminBootstrapIntegrationTest {
 
         assertThat(adminBootstrap.bootstrap()).isTrue();
         assertThat(accountRepository.countByRole(Role.ADMIN)).isEqualTo(1);
+    }
+
+    @Test
+    void bootstrapWritesExactlyOneAccountCreatedEvent() throws Exception {
+        jdbcTemplate.update("delete from auth.outbox");
+        accountRepository.deleteAll();
+
+        assertThat(adminBootstrap.bootstrap()).isTrue();
+
+        assertThat(outboxCountOfType(EventTypes.ACCOUNT_CREATED)).isEqualTo(1);
+        String envelope = jdbcTemplate.queryForObject(
+                "select payload::text from auth.outbox where event_type = ?",
+                String.class, EventTypes.ACCOUNT_CREATED);
+
+        Account admin = singleAdmin();
+        JsonNode payload = objectMapper.readTree(envelope).get("payload");
+        assertThat(UUID.fromString(payload.get("accountId").asText())).isEqualTo(admin.getId());
+        assertThat(payload.get("username").asText()).isEqualTo("admin");
+        assertThat(payload.get("role").asText()).isEqualTo(Role.ADMIN.name());
+        assertThat(payload.get("displayName").asText()).isEqualTo("admin");
+    }
+
+    @Test
+    void repeatedBootstrapDoesNotWriteSecondAccountCreatedEvent() {
+        jdbcTemplate.update("delete from auth.outbox");
+        accountRepository.deleteAll();
+
+        assertThat(adminBootstrap.bootstrap()).isTrue();
+        assertThat(adminBootstrap.bootstrap()).isFalse();
+
+        assertThat(outboxCountOfType(EventTypes.ACCOUNT_CREATED)).isEqualTo(1);
+    }
+
+    private int outboxCountOfType(String eventType) {
+        Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from auth.outbox where event_type = ?", Integer.class, eventType);
+        return count == null ? 0 : count;
     }
 
     private Account singleAdmin() {

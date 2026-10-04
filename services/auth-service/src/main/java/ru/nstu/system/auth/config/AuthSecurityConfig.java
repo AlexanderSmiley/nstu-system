@@ -31,7 +31,7 @@ import ru.nstu.system.security.servlet.NstuJwtAuthenticationFilter;
  *       ({@code POST /api/auth/password}, {@code POST /api/auth/logout},
  *       {@code GET /api/auth/me});</li>
  *   <li>public routes: login, refresh, guest, {@code GET /api/site},
- *       actuator health and the error dispatch;</li>
+ *       {@code GET /api/site/icon}, actuator health and the error dispatch;</li>
  *   <li>{@link RoleHierarchyFactory#roleHierarchy()} provides
  *       {@code ADMIN > STAFF > STUDENT > GUEST} for future {@code hasRole} checks.</li>
  * </ul>
@@ -58,7 +58,7 @@ public class AuthSecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/login", "/api/auth/refresh", "/api/auth/guest").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/site").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/site", "/api/site/icon").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/error").permitAll()
                         // User administration is ADMIN-only (task 5.11). Note that the
                         // role hierarchy grants downwards only, so STAFF/STUDENT/GUEST

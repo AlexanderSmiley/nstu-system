@@ -21,6 +21,15 @@ spring:
       hibernate:
         default_schema: auth
 
+  # Coarse container-level guard for the icon upload. The real 256 KB limit is
+  # enforced by SiteAssetService (nstu.site.icon.max-bytes) so the client gets
+  # the precise `icon_too_large` code; this ceiling only stops absurd payloads
+  # from being buffered and is translated to the same code by ApiExceptionHandler.
+  servlet:
+    multipart:
+      max-file-size: ${SITE_ICON_MULTIPART_MAX:1MB}
+      max-request-size: ${SITE_ICON_MULTIPART_MAX:1MB}
+
   # RabbitMQ connection (design.md D13). docker-compose passes SPRING_RABBITMQ_*
   # straight through; the defaults below allow a local run against a broker on
   # localhost. The topology (exchange, DLQ, converter) comes from
@@ -46,6 +55,10 @@ nstu:
     cookie-secure: ${COOKIE_SECURE:false}
     refresh-ttl: P7D
     guest-ttl: P7D
+  site:
+    icon:
+      # Site icon upload limit (design.md D2). Keep the multipart ceiling above.
+      max-bytes: ${SITE_ICON_MAX_BYTES:262144}
   outbox:
     # auth-service owns auth.outbox (design.md D2, D13).
     schema: auth
