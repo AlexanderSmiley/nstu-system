@@ -1,3 +1,9 @@
+.dockerignore
+openspec
+openspec/
+.opencode
+.opencode/
+.gitignore
 # Секреты окружения
 .env
 .env.local
