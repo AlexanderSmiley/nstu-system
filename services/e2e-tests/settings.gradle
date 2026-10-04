@@ -1,0 +1,16 @@
+rootProject.name = 'e2e-tests'
+
+// Cross-service end-to-end suite (OpenSpec task 12.1).
+//
+// The suite launches the real deployable artifacts of auth-service,
+// student-service and event-service as separate JVMs against one PostgreSQL 16
+// container and one RabbitMQ container, then drives the public HTTP API exactly
+// as a client would (cookie-based sessions).
+//
+// The service builds are included only so their `bootJar` tasks can be wired as
+// task dependencies of this project's `test` task. They are NOT consumed as
+// libraries: each service disables the plain jar and is not a published module,
+// so their classes cannot form a shared classpath (see build.gradle).
+includeBuild('../../services/auth-service')
+includeBuild('../../services/student-service')
+includeBuild('../../services/event-service')

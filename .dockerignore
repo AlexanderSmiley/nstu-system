@@ -1,0 +1,22 @@
+# Build artifacts
+**/build
+**/.gradle
+
+# Frontend
+**/node_modules
+web/dist
+
+# VCS and local project metadata
+.git
+.gitignore
+.obsidian
+
+# Local environment files (secrets) must never enter a build context
+.env
+.env.*
+
+# OpenSpec sources are not needed to build container images
+openspec
+
+# Documentation
+README.md

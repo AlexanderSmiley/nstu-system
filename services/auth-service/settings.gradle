@@ -1,0 +1,6 @@
+rootProject.name = 'auth-service'
+
+// Shared modules are consumed from source through a Gradle composite build.
+// No artifact is published anywhere (no Nexus, no mavenLocal).
+includeBuild('../../libs/security')
+includeBuild('../../libs/contracts')

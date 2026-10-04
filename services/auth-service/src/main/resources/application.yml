@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: auth-service
+
+  # Datasource is supplied by the environment
+  # (SPRING_DATASOURCE_URL=...currentSchema=auth, SPRING_DATASOURCE_USERNAME,
+  #  SPRING_DATASOURCE_PASSWORD) and by Testcontainers (@ServiceConnection) in tests.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # The `auth` schema is created by Flyway itself: the PostgreSQL instance only
+    # ships `public`, while the JDBC URL selects `currentSchema=auth`.
+    schemas: auth
+    default-schema: auth
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: auth
+
+  # RabbitMQ connection (design.md D13). docker-compose passes SPRING_RABBITMQ_*
+  # straight through; the defaults below allow a local run against a broker on
+  # localhost. The topology (exchange, DLQ, converter) comes from
+  # ru.nstu:contracts' NstuRabbitConfig, imported explicitly by MessagingConfig.
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+
+server:
+  port: 8081
+
+nstu:
+  jwt:
+    # HS256 secret (>= 32 bytes), supplied by the environment; never committed.
+    secret: ${JWT_SECRET}
+    issuer: nstu-system
+    access-ttl: PT15M
+  auth:
+    # Secure cookies are off by default so a local run over plain HTTP works;
+    # production sets COOKIE_SECURE=true.
+    cookie-secure: ${COOKIE_SECURE:false}
+    refresh-ttl: P7D
+    guest-ttl: P7D
+  outbox:
+    # auth-service owns auth.outbox (design.md D2, D13).
+    schema: auth
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

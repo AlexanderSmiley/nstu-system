@@ -1,0 +1,63 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'ru.nstu'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Single source of dependency versions for the shared module. Consumers
+    // (services) import the very same BOM, so constraints never conflict.
+    api platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
+
+    // Event contract types are part of the public API (`DomainEvent` payloads
+    // are serialised with Jackson, so the mapper must be visible to consumers).
+    api 'com.fasterxml.jackson.core:jackson-databind'
+    api 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+    // Spring building blocks used by the RabbitMQ/outbox/idempotency support
+    // classes that services wire explicitly.
+    api 'org.springframework:spring-core'
+    api 'org.springframework:spring-context'
+    api 'org.springframework:spring-tx'
+    api 'org.springframework:spring-jdbc'
+    api 'org.springframework.boot:spring-boot'
+    api 'org.springframework.amqp:spring-rabbit'
+    api 'org.slf4j:slf4j-api'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-amqp'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:rabbitmq'
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.awaitility:awaitility'
+    // Unlike the Spring Boot Gradle plugin, `java-library` does not add the
+    // Platform launcher. Without it Gradle injects its own (older) launcher and
+    // the 1.12 engine fails with "OutputDirectoryProvider not available".
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // PostgreSQL driver is only needed by this module's own tests; shipping it
+    // as a runtime dependency would leak into every consumer, the gateway
+    // included.
+    testRuntimeOnly 'org.postgresql:postgresql'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // Spring 6 resolves constructor/method parameter names via reflection, so
+    // the names must survive compilation.
+    options.compilerArgs += ['-parameters']
+}

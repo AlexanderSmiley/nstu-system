@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: notification-service
+
+  # Broker connection comes from the environment (design.md D21). Publisher
+  # confirms match the shared RabbitTemplate callbacks; listener retry with
+  # backoff is the first line of defence, the DLQ re-drive scheduler is the
+  # second (design.md D13).
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1s
+          multiplier: 2.0
+          max-interval: 20s
+
+server:
+  port: 8084
+
+nstu:
+  dlq:
+    # Period between re-driving messages from nstu.events.dlq back to nstu.events.
+    redrive-interval: PT1M
+    redrive-max-batch: 100
+    receive-timeout: 200ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

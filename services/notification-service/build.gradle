@@ -1,0 +1,56 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.6'
+}
+
+// NOTE: the developer machine has JDK 25 first on PATH, but Gradle 8.7 does not
+// support it. Always invoke the wrapper with a Java 21 JDK, e.g.:
+//   JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew build
+// The toolchain below pins compilation to Java 21 regardless.
+
+group = 'ru.nstu'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
+
+    // Shared composite-build modules (resolved from source, not published).
+    implementation 'ru.nstu:security'
+    implementation 'ru.nstu:contracts'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Event subscription: all domain events with retry/backoff, DLQ and re-drive
+    // (design.md D13, D22).
+    implementation 'org.springframework.boot:spring-boot-starter-amqp'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    // End-to-end listener/DLQ tests run against a real broker (design.md D13).
+    testImplementation 'org.testcontainers:rabbitmq'
+    testImplementation 'org.awaitility:awaitility'
+    // Required by Testcontainers' output directory support under Gradle 8.7.
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Keep exactly one jar in build/libs so the Dockerfile copy stays deterministic.
+tasks.named('jar') {
+    enabled = false
+}

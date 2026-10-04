@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.6'
+}
+
+// NOTE: the developer machine has JDK 25 first on PATH, but Gradle 8.7 does not
+// support it. Always invoke the wrapper with a Java 21 JDK, e.g.:
+//   JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew build
+// The toolchain below pins compilation to Java 21 regardless.
+
+group = 'ru.nstu'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
+    implementation platform('org.springframework.cloud:spring-cloud-dependencies:2025.0.3')
+
+    // Shared composite-build module (resolved from source, not published).
+    // `ru.nstu:contracts` is intentionally NOT a gateway dependency: it brings
+    // AMQP types and NstuRabbitConfig, which this reactive service must not load.
+    // The JWT parser and password-change policy live in `ru.nstu:security`.
+    implementation 'ru.nstu:security'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // Reactive gateway: Spring Cloud Gateway (WebFlux). Intentionally no
+    // spring-boot-starter-web here, otherwise the servlet stack would clash.
+    implementation 'org.springframework.cloud:spring-cloud-starter-gateway-server-webflux'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Keep exactly one jar in build/libs so the Dockerfile copy stays deterministic.
+tasks.named('jar') {
+    enabled = false
+}

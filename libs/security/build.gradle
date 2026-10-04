@@ -1,0 +1,58 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'ru.nstu'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Single source of dependency versions for the shared module. Consumers
+    // (services) import the very same BOM, so constraints never conflict.
+    api platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
+
+    // Types that appear in the public API of this module, hence `api`.
+    api 'org.springframework:spring-core'
+    api 'org.springframework:spring-context'
+    api 'org.springframework:spring-web'
+    api 'org.springframework.boot:spring-boot'
+    api 'org.springframework.security:spring-security-core'
+
+    // JWT implementation detail: no jsonwebtoken type is exposed by the public
+    // API, so these stay off the compile classpath of consumers.
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    // Servlet API is provided by the consuming servlet container; the reactive
+    // gateway neither needs nor loads the servlet filter.
+    compileOnly 'jakarta.servlet:jakarta.servlet-api'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'jakarta.servlet:jakarta.servlet-api'
+    // Unlike the Spring Boot Gradle plugin, `java-library` does not add the
+    // Platform launcher. Without it Gradle injects its own (older) launcher and
+    // the 1.12 engine fails with "OutputDirectoryProvider not available".
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // Spring 6 resolves constructor/method parameter names via reflection, so
+    // the names must survive compilation.
+    options.compilerArgs += ['-parameters']
+}

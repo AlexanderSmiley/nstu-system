@@ -1,0 +1,72 @@
+spring:
+  application:
+    name: student-service
+
+  # Datasource is supplied by the environment
+  # (SPRING_DATASOURCE_URL=...currentSchema=student, SPRING_DATASOURCE_USERNAME,
+  #  SPRING_DATASOURCE_PASSWORD) and by Testcontainers (@ServiceConnection) in tests.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: student
+    default-schema: student
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: student
+
+  # Broker connection comes from the environment (design.md D21). Publisher
+  # confirms are required by the shared RabbitTemplate callbacks; listener retry
+  # with backoff is the first line of defence, the DLQ re-drive scheduler is the
+  # second (design.md D13).
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1s
+          multiplier: 2.0
+          max-interval: 20s
+
+server:
+  port: 8082
+
+nstu:
+  jwt:
+    # HS256 secret (>= 32 bytes), supplied by the environment; never committed.
+    secret: ${JWT_SECRET}
+    issuer: nstu-system
+    access-ttl: PT15M
+  outbox:
+    # Schema owning student.outbox (design.md D13).
+    schema: student
+    poll-interval: PT5S
+  idempotency:
+    # Schema owning student.processed_event (design.md D13).
+    schema: student
+  internal:
+    # Shared secret for GET /internal/students/{accountId} (design.md D12).
+    # Blank/unset means every internal request is rejected (fail closed).
+    token: ${INTERNAL_TOKEN:}
+  dlq:
+    # Period between re-driving messages from nstu.events.dlq back to nstu.events.
+    redrive-interval: PT1M
+    redrive-max-batch: 100
+    receive-timeout: 200ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

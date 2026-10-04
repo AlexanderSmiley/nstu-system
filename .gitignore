@@ -1,0 +1,23 @@
+# Секреты окружения
+.env
+.env.local
+
+# Java / Gradle
+**/build/
+**/.gradle/
+*.iml
+
+# Node
+**/node_modules/
+**/dist/
+
+# Логи
+*.log
+
+# IDE / OS
+.idea/
+.DS_Store
+
+# Локальные инструменты / редакторы
+.obsidian/
+opencode_session

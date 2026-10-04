@@ -1,0 +1,66 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.6'
+}
+
+// NOTE: the developer machine has JDK 25 first on PATH, but Gradle 8.7 does not
+// support it. Always invoke the wrapper with a Java 21 JDK, e.g.:
+//   JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew build
+// The toolchain below pins compilation to Java 21 regardless.
+
+group = 'ru.nstu'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
+
+    // Shared composite-build modules (resolved from source, not published).
+    implementation 'ru.nstu:security'
+    implementation 'ru.nstu:contracts'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Persistence + schema migrations.
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Spring Security: BCrypt bean plus the servlet filter chain configured in
+    // AuthSecurityConfig (stateless sessions, JWT authentication filter,
+    // password-change allowlist).
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // RabbitMQ + transactional outbox (design.md D13). `ru.nstu:contracts`
+    // exposes spring-rabbit through its `api` configuration, but the Spring Boot
+    // auto-configuration (ConnectionFactory, RabbitTemplate, RabbitAdmin) is only
+    // activated with the AMQP starter on the classpath, so it is declared here.
+    implementation 'org.springframework.boot:spring-boot-starter-amqp'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Keep exactly one jar in build/libs so the Dockerfile copy stays deterministic.
+tasks.named('jar') {
+    enabled = false
+}

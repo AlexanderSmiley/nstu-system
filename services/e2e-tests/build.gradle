@@ -1,0 +1,81 @@
+plugins {
+    id 'java'
+}
+
+// Cross-service end-to-end suite (OpenSpec change add-event-queue-mvp, task 12.1;
+// design.md D1, D11, D12, D13, D21).
+//
+// Why separate JVMs instead of one in-process SpringApplicationBuilder launch:
+// every service applies the Spring Boot Gradle plugin and disables its plain jar
+// (`jar { enabled = false }`), so a sibling Gradle build cannot put the service's
+// classes on its classpath as a library. Spring Boot's bootJar is not usable as a
+// classpath artifact (classes live under BOOT-INF/), and the `jar` task that would
+// have produced a consumable thin jar is off. Rather than copying sources or
+// hand-maintaining three duplicated dependency sets, this suite runs the actual
+// bootJars as separate processes: real network hops, real serialisation and a
+// genuine internal HTTP call from event-service to student-service. That is the
+// "equivalent that checks real HTTP between services" allowed by the task.
+
+group = 'ru.nstu'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+/** Absolute path of the bootJar produced by an included service build. */
+def serviceJar = { String service ->
+    new File(rootDir, "../${service}/build/libs/${service}-0.0.1-SNAPSHOT.jar")
+}
+
+dependencies {
+    testImplementation platform('org.springframework.boot:spring-boot-dependencies:3.5.6')
+
+    // Shared event contracts (event types, Rabbit names, domain group id) so the
+    // suite asserts against the same constants the services use. Resolved from
+    // source through the composite build; nothing is published.
+    testImplementation 'ru.nstu:contracts'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.amqp:spring-rabbit'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:rabbitmq'
+    testImplementation 'org.awaitility:awaitility'
+
+    // Driver used to inspect the database directly (bootstrap/password-hash checks).
+    testRuntimeOnly 'org.postgresql:postgresql'
+    // Unlike the Spring Boot Gradle plugin, `java-library` (and this plain `java`
+    // project without the plugin) does not add the Platform launcher. Without it
+    // Gradle injects its own (older) launcher and the 1.12 engine fails with
+    // "OutputDirectoryProvider not available".
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+
+    // Build the deployable artifacts the suite launches. Depending on bootJar
+    // (not build) keeps the services' own test suites out of this invocation.
+    dependsOn gradle.includedBuild('auth-service').task(':bootJar')
+    dependsOn gradle.includedBuild('student-service').task(':bootJar')
+    dependsOn gradle.includedBuild('event-service').task(':bootJar')
+
+    systemProperty 'e2e.authServiceJar', serviceJar('auth-service').absolutePath
+    systemProperty 'e2e.studentServiceJar', serviceJar('student-service').absolutePath
+    systemProperty 'e2e.eventServiceJar', serviceJar('event-service').absolutePath
+
+    // Pull of two images plus three Spring Boot startups.
+    timeout = java.time.Duration.ofMinutes(20)
+
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat 'full'
+    }
+}
