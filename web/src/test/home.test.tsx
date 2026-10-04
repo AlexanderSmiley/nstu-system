@@ -15,7 +15,7 @@ function preferences(modules: Preferences['modules']): Preferences {
 describe('главная страница как реестр модулей', () => {
   it('реестр содержит плитки «События», «Календарь» и «Заметки», переход открывает /events', async () => {
     const user = userEvent.setup()
-    installApiMock({ me: STUDENT_ME, events: [], calendar: [], notes: { notes: [], quota: { usedBytes: 0, limitBytes: 104857600 } } })
+    installApiMock({ me: STUDENT_ME, events: [], calendar: [], notes: { notes: [], quota: { usedBytes: 0, limitBytes: 10485760 } } })
     renderApp(['/'])
 
     const grid = await screen.findByTestId('module-grid')

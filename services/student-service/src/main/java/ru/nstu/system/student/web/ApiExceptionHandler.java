@@ -45,13 +45,13 @@ public class ApiExceptionHandler {
     /**
      * The servlet multipart ceiling is a coarse guard; a file larger than it
      * never reaches the controller. Reuse the precise attachment code so the SPA
-     * shows the same message as for the application-level 25 MiB limit
+     * shows the same message as for the application-level 10 MiB limit
      * (change add-notes-module).
      */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException exception) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(new ApiErrorResponse("attachment_too_large",
-                        "Размер файла не должен превышать 25 МБ"));
+                        "Размер файла не должен превышать 10 МБ"));
     }
 }

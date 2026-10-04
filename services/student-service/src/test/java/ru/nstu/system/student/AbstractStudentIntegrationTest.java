@@ -45,7 +45,9 @@ import ru.nstu.system.student.messaging.DlqReDriveScheduler;
         "nstu.internal.token=test-internal-token",
         "nstu.outbox.poll-interval=PT1H",
         "nstu.dlq.redrive-interval=PT24H",
-        // Small, exact limits keep the note tests fast (change add-notes-module).
+        // Scaled-down note limits keep the boundary tests fast (production is
+        // 10 MiB quota / 10 MiB per file). The test quota stays above one file
+        // so partial quota fills can be exercised.
         "nstu.notes.quota-bytes=5242880",
         "nstu.notes.max-attachment-bytes=4194304",
         "spring.rabbitmq.listener.simple.retry.enabled=true",

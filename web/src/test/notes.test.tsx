@@ -7,7 +7,7 @@ import { GUEST_ME, STUDENT_ME } from './fixtures'
 import { installApiMock, jsonResponse, makeMockNote, makeMockNoteAttachment } from './mockApi'
 import { renderApp } from './renderApp'
 
-const LIMIT = 100 * 1024 * 1024
+const LIMIT = 10 * 1024 * 1024
 
 function quotaResponse(notes: Note[], attachments: NoteAttachmentInfo[] = []): NotesResponse {
   return {

@@ -33,7 +33,7 @@ import ru.nstu.system.student.service.NoteService;
 /**
  * Integration tests of the personal notes module (change add-notes-module,
  * design.md D1-D7): ownership/privacy, CRUD, attachment limits and download
- * hardening, the 100 MiB quota, concurrent uploads and guest exclusion.
+ * hardening, the 10 MiB quota, concurrent uploads and guest exclusion.
  *
  * <p>Limits are overridden to 5 MiB total and 4 MiB per file in
  * {@link AbstractStudentIntegrationTest} so the boundary tests stay fast.</p>

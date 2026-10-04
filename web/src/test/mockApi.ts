@@ -358,7 +358,7 @@ export function installApiMock(options: ApiMockOptions = {}): void {
         const notes = typeof options.notes === 'function' ? options.notes() : options.notes
         return jsonResponse(
           200,
-          notes ?? { notes: [], quota: { usedBytes: 0, limitBytes: 104857600 } },
+          notes ?? { notes: [], quota: { usedBytes: 0, limitBytes: 10485760 } },
         )
       }
       return undefined

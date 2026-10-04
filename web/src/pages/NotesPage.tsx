@@ -22,9 +22,9 @@ function noteErrorMessage(error: unknown): string {
       case 'invalid_note':
         return 'Название заметки не может быть пустым'
       case 'attachment_too_large':
-        return 'Файл слишком большой. Максимальный размер — 25 МБ.'
+        return 'Файл слишком большой. Максимальный размер — 10 МБ.'
       case 'note_quota_exceeded':
-        return 'Превышена квота вложений (100 МБ). Удалите файлы, чтобы загрузить новые.'
+        return 'Превышена квота вложений (10 МБ). Удалите файлы, чтобы загрузить новые.'
       case 'invalid_attachment':
         return 'Недопустимый файл или имя файла'
       case 'note_not_found':
@@ -325,7 +325,7 @@ export function NotesPage() {
                       />
                     </label>
                     <p className="field__hint">
-                      Не более 25 МБ на файл; общий лимит на пользователя — 100 МБ.
+                      Не более 10 МБ на файл; общий лимит на пользователя — 10 МБ.
                     </p>
                   </section>
                 )}

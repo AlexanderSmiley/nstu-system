@@ -10,9 +10,9 @@ import org.springframework.stereotype.Component;
  * <p>Bound from {@code nstu.notes}:</p>
  * <ul>
  *   <li>{@code quota-bytes} — total attachment storage per account (default
- *       104 857 600 = 100 MiB);</li>
+ *       10 485 760 = 10 MiB);</li>
  *   <li>{@code max-attachment-bytes} — size of a single file (default
- *       26 214 400 = 25 MiB).</li>
+ *       10 485 760 = 10 MiB).</li>
  * </ul>
  *
  * <p>Both limits are enforced in the service layer so the client always gets the
@@ -25,10 +25,10 @@ import org.springframework.stereotype.Component;
 public class NotesProperties {
 
     /** Total attachment bytes allowed per account. */
-    private long quotaBytes = 104_857_600L;
+    private long quotaBytes = 10_485_760L;
 
     /** Maximum size of a single attachment. */
-    private long maxAttachmentBytes = 26_214_400L;
+    private long maxAttachmentBytes = 10_485_760L;
 
     public long getQuotaBytes() {
         return quotaBytes;
