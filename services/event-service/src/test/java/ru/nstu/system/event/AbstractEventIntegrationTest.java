@@ -85,6 +85,7 @@ abstract class AbstractEventIntegrationTest {
     void resetState() {
         jdbcTemplate.update("delete from event.queue_entry");
         jdbcTemplate.update("delete from event.event");
+        jdbcTemplate.update("delete from event.calendar_entry");
         jdbcTemplate.update("delete from event.outbox");
     }
 

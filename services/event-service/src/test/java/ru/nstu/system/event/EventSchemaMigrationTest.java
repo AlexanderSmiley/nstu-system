@@ -62,7 +62,63 @@ class EventSchemaMigrationTest {
                 String.class);
 
         assertThat(tables)
-                .contains("event", "queue_entry", "outbox", "flyway_schema_history");
+                .contains("event", "queue_entry", "outbox", "calendar_entry", "flyway_schema_history");
+    }
+
+    @Test
+    void createsCalendarEntryTableWithExpectedColumns() {
+        List<String> columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = 'event' and table_name = 'calendar_entry'",
+                String.class);
+
+        assertThat(columns).contains(
+                "id", "group_id", "author_account_id", "author_display_name", "title", "description",
+                "starts_on", "starts_at", "audience", "created_at", "updated_at");
+
+        assertThat(columnType("starts_on")).isEqualTo("date");
+        assertThat(columnType("starts_at")).isEqualTo("time without time zone");
+        assertThat(columnType("created_at")).isEqualTo("timestamp with time zone");
+        assertThat(columnType("author_display_name")).isEqualTo("text");
+    }
+
+    @Test
+    void calendarAuthorDisplayNameIsNullable() {
+        insertCalendarEntry("ME");
+
+        String name = jdbc.queryForObject(
+                "select author_display_name from event.calendar_entry limit 1", String.class);
+
+        assertThat(name).isNull();
+    }
+
+    @Test
+    void createsCalendarIndexOnGroupAndDay() {
+        String definition = indexDefinition("calendar_entry_group_starts_on_idx");
+
+        assertThat(definition)
+                .contains("group_id")
+                .contains("starts_on");
+    }
+
+    @Test
+    void rejectsUnknownCalendarAudience() {
+        assertThatThrownBy(() -> insertCalendarEntry("UNKNOWN"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void acceptsKnownCalendarAudiences() {
+        insertCalendarEntry("ME");
+        insertCalendarEntry("GROUP");
+        insertCalendarEntry("STAFF");
+
+        Integer count = jdbc.queryForObject(
+                "select count(*) from event.calendar_entry "
+                        + "where audience in ('ME', 'GROUP', 'STAFF')",
+                Integer.class);
+
+        assertThat(count).isEqualTo(3);
     }
 
     @Test
@@ -96,7 +152,8 @@ class EventSchemaMigrationTest {
                 "event_status_closed_at_idx",
                 "queue_entry_event_status_idx",
                 "queue_entry_event_passed_at_idx",
-                "outbox_published_at_idx");
+                "outbox_published_at_idx",
+                "calendar_entry_group_starts_on_idx");
     }
 
     @Test
@@ -159,6 +216,22 @@ class EventSchemaMigrationTest {
         return jdbc.queryForObject(
                 "select indexdef from pg_indexes where schemaname = 'event' and indexname = ?",
                 String.class, indexName);
+    }
+
+    private String columnType(String columnName) {
+        return jdbc.queryForObject(
+                "select data_type from information_schema.columns "
+                        + "where table_schema = 'event' and table_name = 'calendar_entry' and column_name = ?",
+                String.class, columnName);
+    }
+
+    private void insertCalendarEntry(String audience) {
+        jdbc.update(
+                "insert into event.calendar_entry "
+                        + "(id, group_id, author_account_id, title, starts_on, audience) "
+                        + "values (?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                "Мероприятие", java.time.LocalDate.of(2026, 5, 1), audience);
     }
 
     private UUID insertEvent() {

@@ -60,15 +60,8 @@ public class StudentProfileClient {
      */
     public String fetchFullName(UUID accountId) {
         Objects.requireNonNull(accountId, "accountId");
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(INTERNAL_TOKEN_HEADER, internalToken);
         try {
-            InternalStudentProfile profile = restTemplate.exchange(
-                    baseUrl + PROFILE_PATH,
-                    HttpMethod.GET,
-                    new HttpEntity<>(headers),
-                    InternalStudentProfile.class,
-                    accountId).getBody();
+            InternalStudentProfile profile = fetchProfile(accountId);
             if (profile == null || profile.fullName() == null || profile.fullName().isBlank()) {
                 throw ApiException.badRequest("profile_required",
                         "Не удалось определить имя участника; укажите имя вручную");
@@ -82,6 +75,45 @@ public class StudentProfileClient {
             throw ApiException.serviceUnavailable("profile_unavailable",
                     "Сервис профилей временно недоступен, попробуйте позже");
         }
+    }
+
+    /**
+     * Best-effort variant used to snapshot the author's display name on a calendar
+     * entry (change add-preferences-and-calendar-ui; design.md D5).
+     *
+     * <p>Unlike {@link #fetchFullName(UUID)} this never fails the caller: a missing
+     * profile ({@code 404}), an unreachable {@code student-service} or an empty
+     * name all yield {@code null}. The calendar module treats the name as a
+     * convenience, so it stores nothing instead of rejecting the entry — and the
+     * queue contract ({@code profile_required}/{@code profile_unavailable}) stays
+     * untouched.</p>
+     *
+     * @return the trimmed {@code fullName} or {@code null} when it cannot be resolved
+     */
+    public String tryFetchFullName(UUID accountId) {
+        Objects.requireNonNull(accountId, "accountId");
+        try {
+            InternalStudentProfile profile = fetchProfile(accountId);
+            if (profile == null || profile.fullName() == null || profile.fullName().isBlank()) {
+                return null;
+            }
+            return profile.fullName().trim();
+        } catch (RestClientException ex) {
+            log.warn("Could not resolve display name for account {}: {}", accountId, ex.getMessage());
+            return null;
+        }
+    }
+
+    /** Performs the internal lookup; failures propagate as {@link RestClientException}. */
+    private InternalStudentProfile fetchProfile(UUID accountId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(INTERNAL_TOKEN_HEADER, internalToken);
+        return restTemplate.exchange(
+                baseUrl + PROFILE_PATH,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                InternalStudentProfile.class,
+                accountId).getBody();
     }
 
     /**
