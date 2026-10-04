@@ -39,6 +39,17 @@ spring:
           multiplier: 2.0
           max-interval: 20s
 
+  # Coarse multipart ceilings for note attachments (change add-notes-module). The
+  # precise 25 MiB per-file limit is enforced by NoteService
+  # (nstu.notes.max-attachment-bytes) so the client always receives the stable
+  # `attachment_too_large` code; these ceilings only stop absurd payloads from
+  # being buffered and must stay above the application limit. The request ceiling
+  # leaves headroom for the multipart envelope.
+  servlet:
+    multipart:
+      max-file-size: ${NOTES_MULTIPART_MAX_FILE:26MB}
+      max-request-size: ${NOTES_MULTIPART_MAX_REQUEST:27MB}
+
 server:
   port: 8082
 
@@ -64,6 +75,12 @@ nstu:
     redrive-interval: PT1M
     redrive-max-batch: 100
     receive-timeout: 200ms
+  notes:
+    # Personal notes module (change add-notes-module, design.md D3/D5).
+    # Total attachment storage per account (100 MiB) and the single-file limit
+    # (25 MiB). Keep the multipart ceilings above the latter.
+    quota-bytes: ${NOTES_QUOTA_BYTES:104857600}
+    max-attachment-bytes: ${NOTES_MAX_ATTACHMENT_BYTES:26214400}
 
 management:
   endpoints:

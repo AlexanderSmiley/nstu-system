@@ -18,7 +18,6 @@ import ru.nstu.system.contracts.events.DomainEvent;
 import ru.nstu.system.contracts.events.EventTypes;
 import ru.nstu.system.contracts.events.ProfileUpdatedPayload;
 import ru.nstu.system.contracts.outbox.OutboxWriter;
-import ru.nstu.system.security.RoleNames;
 import ru.nstu.system.student.domain.StudentProfile;
 import ru.nstu.system.student.domain.StudentProfileRepository;
 import ru.nstu.system.student.error.ApiException;
@@ -43,6 +42,21 @@ public class StudentProfileService {
     private static final int FULL_NAME_MAX_LENGTH = 255;
 
     /**
+     * Neutral name used when a profile is created lazily for an account whose
+     * original {@code account.created} event predates this change and carries no
+     * display name. {@code full_name} is {@code NOT NULL}, so a value is required.
+     */
+    private static final String NEUTRAL_FULL_NAME = "Пользователь";
+
+    /**
+     * Insert-once profile provisioning used by lazy creation. The primary key is
+     * the account id, so a concurrent insert is absorbed rather than failing.
+     */
+    private static final String INSERT_PROFILE_IF_ABSENT =
+            "insert into student.student_profile (id, full_name, group_id) values (?, ?, ?) "
+                    + "on conflict (id) do nothing";
+
+    /**
      * Read-only lookup of a study group name. Kept as a plain JDBC query because
      * the directory is a trivial, single-column read and does not warrant a full
      * JPA entity/repository pair (design.md D7).
@@ -64,14 +78,13 @@ public class StudentProfileService {
     }
 
     /**
-     * Creates the profile for a newly created {@code STUDENT} or {@code STAFF}
-     * account (identity spec "Создание профиля при создании аккаунта").
+     * Creates the profile for a newly created account, regardless of role —
+     * including {@code ADMIN} (change add-preferences-and-calendar-ui, design.md
+     * D1; identity spec "Профиль у всех аккаунтов, включая администратора").
      *
-     * <p>Roles {@code ADMIN} and {@code GUEST} never own a profile; such events are
-     * intentionally ignored rather than treated as errors. The operation is
-     * idempotent at two levels: by {@code eventId} in the listener and, defensively
-     * here, by the account id (primary key), so a duplicate event can never produce
-     * a second profile.</p>
+     * <p>The operation is idempotent at two levels: by {@code eventId} in the
+     * listener and, defensively here, by the account id (primary key), so a
+     * duplicate event can never produce a second profile.</p>
      *
      * @param payload decoded {@code account.created} body
      */
@@ -80,11 +93,6 @@ public class StudentProfileService {
         Objects.requireNonNull(payload, "payload");
         UUID accountId = Objects.requireNonNull(payload.accountId(), "accountId");
         String role = payload.role();
-        if (!RoleNames.STUDENT.equals(role) && !RoleNames.STAFF.equals(role)) {
-            log.debug("No profile is created for account {} with role {} (only STUDENT/STAFF own one)",
-                    accountId, role);
-            return;
-        }
         if (repository.existsById(accountId)) {
             log.debug("Profile for account {} already exists; skipping creation", accountId);
             return;
@@ -114,6 +122,33 @@ public class StudentProfileService {
     }
 
     /**
+     * Returns the account's profile, creating it lazily when missing
+     * (change add-preferences-and-calendar-ui, design.md D1; task 1.2).
+     *
+     * <p>Accounts created before the "profile for every account" rule — notably
+     * administrators — have no profile until their first self-service call. The
+     * insert is race-safe ({@code on conflict (id) do nothing}) and followed by a
+     * re-read, so two concurrent first calls converge on the same row. The name
+     * falls back to {@link #NEUTRAL_FULL_NAME} because {@code full_name} is
+     * {@code NOT NULL}.</p>
+     *
+     * @param accountId {@code auth.account.id}, also the profile primary key
+     * @return the existing or freshly created profile
+     */
+    @Transactional
+    public StudentProfile getOrCreateProfile(UUID accountId) {
+        Objects.requireNonNull(accountId, "accountId");
+        Optional<StudentProfile> existing = repository.findById(accountId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        jdbcTemplate.update(INSERT_PROFILE_IF_ABSENT, accountId, NEUTRAL_FULL_NAME, Groups.DEFAULT_GROUP_ID);
+        return repository.findById(accountId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "student.student_profile row for " + accountId + " is missing after an upsert"));
+    }
+
+    /**
      * Resolves the human-readable name of a study group from the directory.
      *
      * <p>The profile API is never failed by a missing directory entry: an unknown
@@ -138,15 +173,19 @@ public class StudentProfileService {
      * appended to the outbox <em>in the same transaction</em> as the update
      * (task 6.4). A contacts-only edit emits no event.</p>
      *
+     * <p>An account without a profile gets one lazily first, so editing is
+     * available to every authenticated account (change
+     * add-preferences-and-calendar-ui, identity spec "Профиль у всех аккаунтов,
+     * включая администратора").</p>
+     *
      * @param newFullName new full name, or {@code null} to leave it unchanged
      * @param newContacts new contacts, or {@code null} to leave them unchanged
-     * @throws ApiException 404 when the account has no profile, 400 on invalid input
+     * @throws ApiException 400 on invalid input
      */
     @Transactional
     public StudentProfile updateOwnProfile(UUID accountId, String newFullName, Map<String, Object> newContacts) {
         Objects.requireNonNull(accountId, "accountId");
-        StudentProfile profile = repository.findById(accountId)
-                .orElseThrow(() -> ApiException.notFound("profile_not_found", "Профиль не найден"));
+        StudentProfile profile = getOrCreateProfile(accountId);
 
         boolean fullNameChanged = false;
         if (newFullName != null) {

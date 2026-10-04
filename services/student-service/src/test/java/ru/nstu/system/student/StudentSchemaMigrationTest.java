@@ -62,7 +62,8 @@ class StudentSchemaMigrationTest {
                 String.class);
 
         assertThat(tables)
-                .contains("app_group", "student_profile", "outbox", "processed_event", "flyway_schema_history");
+                .contains("app_group", "student_profile", "outbox", "processed_event", "flyway_schema_history",
+                        "note", "note_attachment", "profile_preferences");
     }
 
     @Test
@@ -120,7 +121,9 @@ class StudentSchemaMigrationTest {
         assertThat(indexes).contains(
                 "outbox_pk",
                 "outbox_published_at_idx",
-                "student_profile_group_id_idx");
+                "student_profile_group_id_idx",
+                "note_account_updated_idx",
+                "note_attachment_note_id_idx");
     }
 
     @Test
@@ -144,5 +147,117 @@ class StudentSchemaMigrationTest {
 
         assertThat(result.migrationsExecuted).isZero();
         assertThat(flyway.info().pending()).isEmpty();
+    }
+
+    // ------------------------------------------------------------------
+    // Notes module (change add-notes-module)
+    // ------------------------------------------------------------------
+
+    @Test
+    void noteHasExpectedColumnShape() {
+        List<String> columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = 'student' and table_name = 'note'",
+                String.class);
+
+        assertThat(columns).containsExactlyInAnyOrder(
+                "id", "account_id", "title", "body", "created_at", "updated_at");
+    }
+
+    @Test
+    void noteAttachmentHasExpectedColumnShape() {
+        List<String> columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = 'student' and table_name = 'note_attachment'",
+                String.class);
+
+        assertThat(columns).containsExactlyInAnyOrder(
+                "id", "note_id", "file_name", "content_type", "size_bytes", "bytes", "created_at");
+    }
+
+    @Test
+    void deletingANoteCascadesToItsAttachments() {
+        UUID noteId = UUID.randomUUID();
+        jdbc.update(
+                "insert into student.note (id, account_id, title) values (?, ?, ?)",
+                noteId, UUID.randomUUID(), "Заметка");
+        jdbc.update(
+                "insert into student.note_attachment"
+                        + " (id, note_id, file_name, content_type, size_bytes, bytes)"
+                        + " values (?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID(), noteId, "file.txt", "text/plain", 3, new byte[] {1, 2, 3});
+
+        jdbc.update("delete from student.note where id = ?", noteId);
+
+        Integer attachments = jdbc.queryForObject(
+                "select count(*) from student.note_attachment where note_id = ?",
+                Integer.class,
+                noteId);
+        assertThat(attachments).isZero();
+    }
+
+    @Test
+    void noteAttachmentRejectsUnknownNote() {
+        // The foreign key must reject an attachment that references no note.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(
+                        "insert into student.note_attachment"
+                                + " (id, note_id, file_name, content_type, size_bytes, bytes)"
+                                + " values (?, ?, ?, ?, ?, ?)",
+                        UUID.randomUUID(), UUID.randomUUID(), "file.txt", "text/plain", 1,
+                        new byte[] {1}))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    // ------------------------------------------------------------------
+    // Per-account preferences (change add-preferences-and-calendar-ui)
+    // ------------------------------------------------------------------
+
+    @Test
+    void profilePreferencesHasExpectedColumnShape() {
+        List<String> columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = 'student' and table_name = 'profile_preferences'",
+                String.class);
+
+        assertThat(columns).containsExactlyInAnyOrder(
+                "profile_id", "modules", "calendar_colors", "updated_at");
+    }
+
+    @Test
+    void profilePreferencesDefaultsAreAppliedWhenOnlyTheProfileIsGiven() {
+        UUID profileId = insertProfileRow();
+
+        jdbc.update("insert into student.profile_preferences (profile_id) values (?)", profileId);
+
+        String modules = jdbc.queryForObject(
+                "select modules::text from student.profile_preferences where profile_id = ?",
+                String.class, profileId);
+        String colors = jdbc.queryForObject(
+                "select calendar_colors::text from student.profile_preferences where profile_id = ?",
+                String.class, profileId);
+
+        assertThat(modules).contains("\"events\": true", "\"calendar\": true", "\"notes\": true");
+        assertThat(colors).contains("\"ME\": \"#ffffff\"", "\"GROUP\": \"#cfe3ff\"", "\"STAFF\": \"#d9dde3\"");
+    }
+
+    @Test
+    void deletingAProfileCascadesToItsPreferences() {
+        UUID profileId = insertProfileRow();
+        jdbc.update("insert into student.profile_preferences (profile_id) values (?)", profileId);
+
+        jdbc.update("delete from student.student_profile where id = ?", profileId);
+
+        Integer preferences = jdbc.queryForObject(
+                "select count(*) from student.profile_preferences where profile_id = ?",
+                Integer.class, profileId);
+        assertThat(preferences).isZero();
+    }
+
+    private UUID insertProfileRow() {
+        UUID profileId = UUID.randomUUID();
+        jdbc.update(
+                "insert into student.student_profile (id, full_name, group_id) values (?, ?, ?)",
+                profileId, "Иванов Иван Иванович", Groups.DEFAULT_GROUP_ID);
+        return profileId;
     }
 }

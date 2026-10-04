@@ -45,6 +45,9 @@ import ru.nstu.system.student.messaging.DlqReDriveScheduler;
         "nstu.internal.token=test-internal-token",
         "nstu.outbox.poll-interval=PT1H",
         "nstu.dlq.redrive-interval=PT24H",
+        // Small, exact limits keep the note tests fast (change add-notes-module).
+        "nstu.notes.quota-bytes=5242880",
+        "nstu.notes.max-attachment-bytes=4194304",
         "spring.rabbitmq.listener.simple.retry.enabled=true",
         "spring.rabbitmq.listener.simple.retry.max-attempts=1",
         "spring.rabbitmq.listener.simple.retry.initial-interval=10ms"
@@ -99,6 +102,8 @@ abstract class AbstractStudentIntegrationTest {
 
     @BeforeEach
     void resetState() {
+        // Attachments are removed by the note foreign-key cascade.
+        jdbcTemplate.update("delete from student.note");
         jdbcTemplate.update("delete from student.student_profile");
         jdbcTemplate.update("delete from student.outbox");
         jdbcTemplate.update("delete from student.processed_event");

@@ -1,11 +1,13 @@
 package ru.nstu.system.student.web;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import ru.nstu.system.student.error.ApiException;
 import ru.nstu.system.student.web.dto.ApiErrorResponse;
 
@@ -38,5 +40,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadableBody(HttpMessageNotReadableException exception) {
         return ResponseEntity.badRequest().body(new ApiErrorResponse("invalid_request", "Некорректный запрос"));
+    }
+
+    /**
+     * The servlet multipart ceiling is a coarse guard; a file larger than it
+     * never reaches the controller. Reuse the precise attachment code so the SPA
+     * shows the same message as for the application-level 25 MiB limit
+     * (change add-notes-module).
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiErrorResponse("attachment_too_large",
+                        "Размер файла не должен превышать 25 МБ"));
     }
 }

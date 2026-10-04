@@ -7,11 +7,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import ru.nstu.system.security.ParsedToken;
-import ru.nstu.system.security.RoleNames;
-import ru.nstu.system.security.SecurityContextSupport;
 import ru.nstu.system.student.domain.StudentProfile;
-import ru.nstu.system.student.error.ApiException;
 import ru.nstu.system.student.service.StudentProfileService;
 import ru.nstu.system.student.web.dto.StudentProfileResponse;
 import ru.nstu.system.student.web.dto.UpdateStudentProfileRequest;
@@ -22,8 +18,9 @@ import ru.nstu.system.student.web.dto.UpdateStudentProfileRequest;
  *
  * <p>Both endpoints require a valid access token (401 without one, enforced by the
  * security filter chain). A guest session is rejected with 403: it has no profile.
- * An administrator passes authentication but has no profile either, so a lookup
- * yields 404.</p>
+ * Every account owns a profile: one is created by {@code account.created}, and an
+ * account that predates that rule (including an administrator) gets one lazily on
+ * its first call here (change add-preferences-and-calendar-ui, design.md D1).</p>
  */
 @RestController
 @RequestMapping("/api/students")
@@ -35,23 +32,21 @@ public class StudentProfileController {
         this.profileService = profileService;
     }
 
-    /** Returns the authenticated caller's own profile. */
+    /** Returns the authenticated caller's own profile, creating it if missing. */
     @GetMapping("/me")
     public StudentProfileResponse me() {
-        ParsedToken token = requireProfileOwner();
-        return toResponse(requireProfile(accountId(token)));
+        return toResponse(profileService.getOrCreateProfile(requireAccountId()));
     }
 
     /**
      * Updates the caller's own full name and/or contacts. When the full name
      * changes, a {@code profile.updated} event is appended to the outbox in the
-     * same transaction (task 6.4).
+     * same transaction (task 6.4). A missing profile is created lazily first.
      */
     @PatchMapping("/me")
     public StudentProfileResponse updateMe(@Valid @RequestBody UpdateStudentProfileRequest request) {
-        ParsedToken token = requireProfileOwner();
         StudentProfile updated = profileService.updateOwnProfile(
-                accountId(token), request.fullName(), request.contacts());
+                requireAccountId(), request.fullName(), request.contacts());
         return toResponse(updated);
     }
 
@@ -65,27 +60,11 @@ public class StudentProfileController {
         return StudentProfileResponse.from(profile, groupName);
     }
 
-    private StudentProfile requireProfile(UUID accountId) {
-        return profileService.findProfile(accountId)
-                .orElseThrow(() -> ApiException.notFound("profile_not_found", "Профиль не найден"));
-    }
-
-    private static ParsedToken requireProfileOwner() {
-        ParsedToken token = SecurityContextSupport.currentToken()
-                .orElseThrow(() -> ApiException.unauthorized("unauthorized", "Требуется аутентификация"));
-        if (token.roles().contains(RoleNames.GUEST)) {
-            throw ApiException.forbidden("guest_has_no_profile", "Гостевая сессия не имеет профиля");
-        }
-        return token;
-    }
-
-    private static UUID accountId(ParsedToken token) {
-        try {
-            return UUID.fromString(token.subject());
-        } catch (IllegalArgumentException ex) {
-            // Only a well-formed account id can own a profile; anything else
-            // (e.g. a guest subject) is treated as unauthorised for this resource.
-            throw ApiException.unauthorized("unauthorized", "Требуется аутентификация");
-        }
+    /**
+     * Resolves the caller's account id. A guest is rejected with 403; the account
+     * itself may or may not have a profile yet (see {@code getOrCreateProfile}).
+     */
+    private static UUID requireAccountId() {
+        return AccountIdentity.requireAccountId("guest_has_no_profile", "Гостевая сессия не имеет профиля");
     }
 }

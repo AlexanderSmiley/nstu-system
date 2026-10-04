@@ -41,17 +41,18 @@ class StudentMessagingIntegrationTest extends AbstractStudentIntegrationTest {
     }
 
     @Test
-    void doesNotCreateProfileForAdmin() {
+    void createsProfileForAdminAccountCreated() {
         UUID eventId = UUID.randomUUID();
         UUID accountId = UUID.randomUUID();
 
         publishAccountCreated(eventId, accountId, RoleNames.ADMIN, "Админов Админ");
 
-        // The event is handled (and marked processed) but deliberately creates
-        // nothing: an ADMIN has no profile (identity spec "Отсутствие профиля у
-        // администратора").
-        await().atMost(awaitTimeout()).until(() -> processedCount(eventId) == 1);
-        assertThat(profileExists(accountId)).isFalse();
+        // Every account owns a profile, including ADMIN (change
+        // add-preferences-and-calendar-ui, identity spec "Профиль у всех
+        // аккаунтов, включая администратора").
+        await().atMost(awaitTimeout()).until(() -> profileExists(accountId));
+        assertThat(profileFullName(accountId)).isEqualTo("Админов Админ");
+        assertThat(processedCount(eventId)).isEqualTo(1);
     }
 
     @Test

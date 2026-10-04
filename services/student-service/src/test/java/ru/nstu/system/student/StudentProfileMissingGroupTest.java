@@ -34,7 +34,9 @@ class StudentProfileMissingGroupTest extends AbstractStudentIntegrationTest {
         UUID accountId = UUID.randomUUID();
         UUID orphanGroupId = UUID.randomUUID();
         StudentProfile profile = StudentProfile.create(accountId, AWAY_FULL_NAME, orphanGroupId);
-        when(profileService.findProfile(accountId)).thenReturn(Optional.of(profile));
+        // The controller now provisions a missing profile lazily, so the service
+        // is stubbed at that entry point.
+        when(profileService.getOrCreateProfile(accountId)).thenReturn(profile);
         when(profileService.findGroupName(orphanGroupId)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/students/me")

@@ -76,10 +76,35 @@ class StudentWebIntegrationTest extends AbstractStudentIntegrationTest {
     }
 
     @Test
-    void getMeForAdminWithoutProfileIsNotFound() throws Exception {
-        // An administrator authenticates successfully but owns no profile.
-        mockMvc.perform(authorized(get("/api/students/me"), adminToken(UUID.randomUUID())))
-                .andExpect(status().isNotFound());
+    void getMeForAdminWithoutProfileCreatesItLazily() throws Exception {
+        // An administrator authenticates successfully; an account that predates
+        // the "profile for every account" rule has none yet, so it is created on
+        // the first call (change add-preferences-and-calendar-ui, task 1.2).
+        UUID accountId = UUID.randomUUID();
+        assertThat(profileExists(accountId)).isFalse();
+
+        mockMvc.perform(authorized(get("/api/students/me"), adminToken(accountId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountId").value(accountId.toString()))
+                .andExpect(jsonPath("$.fullName").value("Пользователь"))
+                .andExpect(jsonPath("$.groupId").value(Groups.DEFAULT_GROUP_ID.toString()));
+
+        assertThat(profileExists(accountId)).isTrue();
+        assertThat(profileCount(accountId)).isEqualTo(1);
+    }
+
+    @Test
+    void getMeCreatesMissingProfileForExistingAccountIdempotently() throws Exception {
+        UUID accountId = UUID.randomUUID();
+        assertThat(profileExists(accountId)).isFalse();
+
+        mockMvc.perform(authorized(get("/api/students/me"), studentToken(accountId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Пользователь"));
+        mockMvc.perform(authorized(get("/api/students/me"), studentToken(accountId)))
+                .andExpect(status().isOk());
+
+        assertThat(profileCount(accountId)).isEqualTo(1);
     }
 
     // ------------------------------------------------------------------
