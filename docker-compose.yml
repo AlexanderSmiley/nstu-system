@@ -53,6 +53,7 @@ services:
       NSTU_ROUTES_STUDENT_URI: ${NSTU_ROUTES_STUDENT_URI:-http://student-service:8082}
       NSTU_ROUTES_EVENT_URI: ${NSTU_ROUTES_EVENT_URI:-http://event-service:8083}
       NSTU_ROUTES_NOTIFICATION_URI: ${NSTU_ROUTES_NOTIFICATION_URI:-http://notification-service:8084}
+      NSTU_CORS_ALLOWED_ORIGINS: ${NSTU_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
     expose:
       - "8080"
     depends_on:

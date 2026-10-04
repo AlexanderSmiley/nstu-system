@@ -13,7 +13,8 @@ import java.util.Locale;
  *       instead of {@code 401/403} so the existence of internal endpoints is not
  *       confirmed.</li>
  *   <li>{@link #isPublic(String, String)} — the only anonymous API surface:
- *       login, refresh, guest session and the public site name (design.md D27).</li>
+ *       login, refresh, guest session and the public site name/icon (design.md
+ *       D27, change add-site-icon).</li>
  * </ul>
  *
  * <p>Paths are normalised before matching (query/fragment dropped, backslashes
@@ -30,6 +31,8 @@ public final class GatewayRouteMatcher {
     private static final String AUTH_GUEST = "/api/auth/guest";
 
     private static final String SITE = "/api/site";
+
+    private static final String SITE_ICON = "/api/site/icon";
 
     private static final String INTERNAL_PREFIX = "/internal";
 
@@ -51,7 +54,8 @@ public final class GatewayRouteMatcher {
             case "POST" -> normalizedPath.equals(AUTH_LOGIN)
                     || normalizedPath.equals(AUTH_REFRESH)
                     || normalizedPath.equals(AUTH_GUEST);
-            case "GET" -> normalizedPath.equals(SITE);
+            case "GET" -> normalizedPath.equals(SITE)
+                    || normalizedPath.equals(SITE_ICON);
             default -> false;
         };
     }

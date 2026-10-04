@@ -16,11 +16,13 @@ spring:
               predicates:
                 - Path=/api/auth/**
             - id: auth-site
-              # Public site name for the login screen (design.md D27, task 5.12);
-              # served by auth-service under the same base URI as /api/auth/**.
+              # Public site name and icon for the login / password-change screens
+              # (design.md D27, change add-site-icon); served by auth-service under
+              # the same base URI as /api/auth/**. GET /api/site/icon is also in
+              # GatewayRouteMatcher's public allowlist.
               uri: ${nstu.routes.auth-uri}
               predicates:
-                - Path=/api/site
+                - Path=/api/site,/api/site/**
                 - Method=GET
             - id: auth-users
               # Administrator user management (tasks 5.8/5.11); prefix is forwarded
@@ -42,6 +44,21 @@ spring:
               uri: ${nstu.routes.event-uri}
               predicates:
                 - Path=/api/events/**
+            - id: calendar
+              # Calendar module (change add-calendar-module), served by event-service
+              # under the same base URI. Not in the public allowlist: a token (guest
+              # sessions included) is mandatory.
+              uri: ${nstu.routes.event-uri}
+              predicates:
+                - Path=/api/calendar/**
+            - id: notes
+              # Personal notes module (change add-notes-module), served by
+              # student-service under the same base URI. Not in the public
+              # allowlist: an access token (guest sessions included) is mandatory;
+              # the service itself rejects guests with 403.
+              uri: ${nstu.routes.student-uri}
+              predicates:
+                - Path=/api/notes/**
             - id: notification-service
               uri: ${nstu.routes.notification-uri}
               predicates:
@@ -49,6 +66,9 @@ spring:
 
 server:
   port: 8080
+  # Honour X-Forwarded-* from the reverse proxy (NPM): the scheme from
+  # X-Forwarded-Proto is used for same-origin checks behind HTTPS.
+  forward-headers-strategy: framework
 
 nstu:
   jwt:

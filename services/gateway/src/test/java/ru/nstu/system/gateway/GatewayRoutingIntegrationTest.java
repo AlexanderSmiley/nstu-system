@@ -41,6 +41,10 @@ class GatewayRoutingIntegrationTest {
 
     private static final String STUB_PATH = "/api/events/ping";
 
+    private static final String CALENDAR_PATH = "/api/calendar?from=2026-10-05&to=2026-10-18";
+
+    private static final String NOTES_PATH = "/api/notes";
+
     private static final String STUB_BODY = "pong";
 
     private static final AtomicReference<String> LAST_COOKIE = new AtomicReference<>();
@@ -74,6 +78,8 @@ class GatewayRoutingIntegrationTest {
     @DynamicPropertySource
     static void downstreamRoute(DynamicPropertyRegistry registry) {
         registry.add("nstu.routes.event-uri", () -> "http://127.0.0.1:" + STUB.port());
+        // /api/notes is served by student-service; point it at the same stub.
+        registry.add("nstu.routes.student-uri", () -> "http://127.0.0.1:" + STUB.port());
         // /api/site is served by auth-service; point it at the same stub.
         registry.add("nstu.routes.auth-uri", () -> "http://127.0.0.1:" + STUB.port());
     }
@@ -130,11 +136,76 @@ class GatewayRoutingIntegrationTest {
     }
 
     @Test
+    void rejectsCalendarRequestWithoutToken() {
+        client.get().uri(CALENDAR_PATH)
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody().jsonPath("$.error").isEqualTo("unauthorized");
+    }
+
+    @Test
+    void proxiesCalendarRequestWithValidToken() {
+        String token = accessToken();
+
+        client.get().uri(CALENDAR_PATH)
+                .cookie(GatewayAuthorizationFilter.ACCESS_TOKEN_COOKIE, token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo(STUB_BODY);
+    }
+
+    @Test
+    void rejectsNotesRequestWithoutToken() {
+        client.get().uri(NOTES_PATH)
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody().jsonPath("$.error").isEqualTo("unauthorized");
+    }
+
+    @Test
+    void proxiesNotesRequestWithValidToken() {
+        String token = accessToken();
+
+        client.get().uri(NOTES_PATH)
+                .cookie(GatewayAuthorizationFilter.ACCESS_TOKEN_COOKIE, token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo(STUB_BODY);
+    }
+
+    @Test
     void proxiesPublicSiteWithoutToken() {
         client.get().uri("/api/site")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).isEqualTo(STUB_BODY);
+    }
+
+    @Test
+    void proxiesPublicSiteIconWithoutToken() {
+        client.get().uri("/api/site/icon")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo(STUB_BODY);
+    }
+
+    @Test
+    void restrictedTokenIsAllowedOnPublicSiteIcon() {
+        String restricted = tokenIssuer.issueAccessToken("acc-1", Set.of("STUDENT"), true);
+
+        client.get().uri("/api/site/icon")
+                .cookie(GatewayAuthorizationFilter.ACCESS_TOKEN_COOKIE, restricted)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo(STUB_BODY);
+    }
+
+    @Test
+    void adminSiteIconWriteWithoutTokenIsUnauthorized() {
+        client.put().uri("/api/admin/site/icon")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody().jsonPath("$.error").isEqualTo("unauthorized");
     }
 
     @Test

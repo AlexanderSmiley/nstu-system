@@ -253,6 +253,7 @@ docker compose down -v         # дополнительно удалить то�
 1. На VPS склонируйте/скопируйте проект и задайте секреты в `.env` (см. `.env.example`):
    - `WEB_PORT=8080` — порт, на который NPM будет проксировать домен (любой свободный);
    - `COOKIE_SECURE=true` — обязательно, т.к. доступ идёт по HTTPS через NPM;
+   - `NSTU_CORS_ALLOWED_ORIGINS=https://<домен>` — публичный origin, иначе браузерные POST-запросы будут отбиваться 403 (same-origin проверка gateway);
    - остальные секреты — как обычно (`POSTGRES_*`, `RABBITMQ_*`, `JWT_SECRET` ≥32 байта, `INTERNAL_TOKEN`, `ADMIN_USERNAME`/`ADMIN_PASSWORD`).
 2. `docker compose up -d --build`
 3. В NPM создайте Proxy Host: домен → `http://<IP-сервера-или-docker0-шлюза>:<WEB_PORT>`.

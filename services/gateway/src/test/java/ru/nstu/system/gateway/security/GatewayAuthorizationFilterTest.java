@@ -175,6 +175,52 @@ class GatewayAuthorizationFilterTest {
     }
 
     @Test
+    void publicSiteIconDoesNotRequireToken() {
+        AtomicBoolean invoked = new AtomicBoolean(false);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/site/icon").build());
+
+        filter.filter(exchange, recordingChain(invoked)).block();
+
+        assertThat(invoked).isTrue();
+    }
+
+    @Test
+    void restrictedTokenIsAllowedOnPublicSiteIcon() {
+        AtomicBoolean invoked = new AtomicBoolean(false);
+        MockServerWebExchange exchange = restrictedExchange(MockServerHttpRequest.get("/api/site/icon"));
+
+        filter.filter(exchange, recordingChain(invoked)).block();
+
+        assertThat(invoked).isTrue();
+    }
+
+    @Test
+    void adminSiteIconWriteRequiresToken() {
+        AtomicBoolean invoked = new AtomicBoolean(false);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.put("/api/admin/site/icon").build());
+
+        filter.filter(exchange, recordingChain(invoked)).block();
+
+        assertThat(invoked).isFalse();
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void adminSiteIconWriteWithTokenReachesTheChain() {
+        AtomicBoolean invoked = new AtomicBoolean(false);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.put("/api/admin/site/icon")
+                        .cookie(new HttpCookie(ACCESS_TOKEN_COOKIE, validToken()))
+                        .build());
+
+        filter.filter(exchange, recordingChain(invoked)).block();
+
+        assertThat(invoked).isTrue();
+    }
+
+    @Test
     void publicLoginDoesNotRequireToken() {
         AtomicBoolean invoked = new AtomicBoolean(false);
         MockServerWebExchange exchange = MockServerWebExchange.from(
