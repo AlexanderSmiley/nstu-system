@@ -57,9 +57,9 @@ export interface ApiMockOptions {
   site?: SiteInfo
   /** Site icon state for `GET /api/site/icon` and the admin upload/reset. */
   siteIcon?: SiteIconMockOptions
-  events?: Event[]
+  events?: Event[] | (() => Event[])
   /** `GET /api/events/history` — the server already filters by role. */
-  eventHistory?: Event[]
+  eventHistory?: Event[] | (() => Event[])
   /** `GET /api/events/by-slug/{slug}` — defaults to `404`. */
   eventBySlug?: EventDetail | ((slug: string) => Response)
   /**
@@ -233,6 +233,13 @@ export function installApiMock(options: ApiMockOptions = {}): void {
     }
     return options.me ?? null
   }
+
+  // Function-valued lists make mutations (e.g. reopening a closed event)
+  // observable on the next fetch, which the history tests rely on.
+  const resolveEvents = (): Event[] | undefined =>
+    typeof options.events === 'function' ? options.events() : options.events
+  const resolveHistory = (): Event[] | undefined =>
+    typeof options.eventHistory === 'function' ? options.eventHistory() : options.eventHistory
 
   // Stateful preferences so an optimistic PATCH is confirmed by the next GET.
   let preferencesState: Preferences = normalizePreferences(options.preferences ?? DEFAULT_PREFERENCES)
@@ -434,7 +441,7 @@ export function installApiMock(options: ApiMockOptions = {}): void {
     },
     (request) => {
       if (request.method === 'GET' && request.url === '/api/events') {
-        return jsonResponse(200, options.events ?? [])
+        return jsonResponse(200, resolveEvents() ?? [])
       }
       return undefined
     },
@@ -450,7 +457,7 @@ export function installApiMock(options: ApiMockOptions = {}): void {
     },
     (request) => {
       if (request.method === 'GET' && request.url === '/api/events/history') {
-        return jsonResponse(200, options.eventHistory ?? [])
+        return jsonResponse(200, resolveHistory() ?? [])
       }
       return undefined
     },
@@ -550,7 +557,7 @@ export function installApiMock(options: ApiMockOptions = {}): void {
         /^\/api\/events\/[^/]+\/(close|open|archive|restore)$/.test(request.url) &&
         request.method === 'POST'
       ) {
-        return jsonResponse(200, options.events?.[0] ?? { id: 'event', status: 'OPEN' })
+        return jsonResponse(200, resolveEvents()?.[0] ?? { id: 'event', status: 'OPEN' })
       }
       return undefined
     },

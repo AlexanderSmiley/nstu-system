@@ -658,6 +658,41 @@ button {
   color: var(--color-muted);
 }
 
+/* Header share row: wraps on narrow screens, readable in both themes. */
+.event-share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.event-share__label {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.event-share__url {
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--color-tile);
+  color: var(--color-text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.event-share__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.event-share__status {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
 .queue-list,
 .journal-list {
   list-style: none;
@@ -749,6 +784,18 @@ button {
   padding: 18px;
   border-radius: 10px;
   background: var(--color-card);
+}
+
+.history-card__link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.history-card__link:hover .event-card__title {
+  text-decoration: underline;
 }
 
 .history-card__closed {

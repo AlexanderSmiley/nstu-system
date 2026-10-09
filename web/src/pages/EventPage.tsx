@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { fetchEventBySlug } from '../api/events'
@@ -13,6 +13,7 @@ import { LoadingScreen } from '../components/LoadingScreen'
 import { useQueue } from '../hooks/useQueue'
 import { formatEventDate } from '../utils/date'
 import { availabilityLabel, entryNameLabel, eventStatusLabel } from '../utils/event'
+import { buildEventShareUrl, canUseWebShare, copyText } from '../utils/share'
 
 function EventNotFound({ slug }: { slug: string }) {
   return (
@@ -40,6 +41,71 @@ function EventForbidden() {
         К списку событий
       </Link>
     </section>
+  )
+}
+
+/**
+ * Staff-only "share" row in the event header: shows the full short link,
+ * copies it with a transient confirmation, and offers the native share sheet
+ * where the Web Share API is available (change add-event-share-and-history-actions).
+ * When the clipboard is unavailable the link stays visible for manual copying.
+ */
+function EventShare({ slug, title }: { slug: string; title: string }) {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle')
+  const url = buildEventShareUrl(slug)
+
+  useEffect(() => {
+    if (status !== 'copied') {
+      return
+    }
+    const timer = window.setTimeout(() => setStatus('idle'), 2000)
+    return () => window.clearTimeout(timer)
+  }, [status])
+
+  const handleCopy = async () => {
+    const copied = await copyText(url)
+    setStatus(copied ? 'copied' : 'error')
+  }
+
+  const handleShare = () => {
+    void navigator.share({ title, url }).catch(() => {
+      // The user cancelled or sharing failed — the visible link still works.
+    })
+  }
+
+  return (
+    <div className="event-share" role="group" aria-label="Поделиться событием">
+      <span className="event-share__label">Поделиться:</span>
+      <code className="event-share__url">{url}</code>
+      <div className="event-share__actions">
+        <button
+          type="button"
+          className="button button--secondary button--small"
+          onClick={handleCopy}
+        >
+          Скопировать
+        </button>
+        {canUseWebShare() && (
+          <button
+            type="button"
+            className="button button--secondary button--small"
+            onClick={handleShare}
+          >
+            Поделиться
+          </button>
+        )}
+      </div>
+      {status === 'copied' && (
+        <span className="event-share__status" role="status">
+          Ссылка скопирована
+        </span>
+      )}
+      {status === 'error' && (
+        <span className="event-share__status form-error" role="alert">
+          Не удалось скопировать — выделите ссылку вручную
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -119,6 +185,7 @@ export function EventPage() {
           {status === 'CLOSED' && <span className="badge badge--closed">приём закрыт</span>}
           {status === 'ARCHIVED' && <span className="badge badge--archived">в архиве</span>}
         </div>
+        {isStaff && <EventShare slug={event.slug} title={event.title} />}
       </header>
 
       {event.description && <p className="event-page__description">{event.description}</p>}
